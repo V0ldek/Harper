@@ -1,0 +1,222 @@
+token UIdent (upper (letter | digit | '_')*) ;
+
+entrypoints Program ;
+
+Prog. Program ::= [TopLvlDecl] ;
+TopLvlFDecl. TopLvlDecl ::= FunDecl ;
+TopLvlTHint. TopLvlDecl ::= TypeHint ;
+TopLvlTDecl. TopLvlDecl ::= TypeDecl ;
+
+terminator TopLvlDecl ";" ;
+
+THint. TypeHint ::= Ident "::" TypeExpr ;
+
+Decl. Declaration ::= Ident ;
+DeclWHint. Declaration ::= TypeHint ;
+
+TVar.   TypeExpr4  ::= Ident ;
+TCtor.  TypeExpr4  ::= UIdent ;
+TPur.   TypeExpr4  ::= TypePurity ;
+TUnit.  TypeExpr4  ::= "()" ;
+TTup.   TypeExpr3  ::= "(" TupleType ")" ;
+TAdHoc.  TypeExpr3  ::= "{" [FieldTypeExpr] "}" ;
+TApp.   TypeExpr2  ::= TypeExpr2 TypeExpr3 ;
+TFun.   TypeExpr1   ::= TypeExpr2 "->" TypeExpr1 ;
+
+TTupList. TupleType ::= TypeExpr "," TupleType ;
+TTupTail. TupleType ::= TypeExpr "," TypeExpr ;
+
+TImpure. TypePurity ::= "impure";
+TSideE. TypePurity ::= "sideeffect";
+
+TFld. FieldTypeExpr ::= TypeHint ;
+separator FieldTypeExpr "," ;
+
+coercions TypeExpr 4 ;
+
+FDecl. FunDecl ::= Ident [FunArg] "=" FunBody ;
+
+FArg. FunArg ::= Ident ;
+LamArg. LambdaArg ::= Pattern ;
+separator FunArg "" ;
+separator LambdaArg "" ;
+
+FValBody. FunBody ::= Value ;
+FStmtBody. FunBody ::= Statement ;
+
+BTrue.  BoolLiteral ::= "true" ;
+BFalse. BoolLiteral ::= "false" ;
+
+IntLit. Literal ::= Integer ;
+CharLit. Literal ::= Char ;
+StrLit. Literal ::= String ;
+BoolLit. Literal ::= BoolLiteral ;
+
+ThisVal. Value12 ::= "this" ;
+AdHocVal. Value11 ::= "val" "{" [AdHocFieldDecl] "}" ;
+VCtorVal. Value11 ::= "val" UIdent "{" [FieldAss] "}" ;
+LamVal. Value11 ::= "\\" [LambdaArg] "=>" FunBody;
+TupVal. Value11 ::= "(" TupleValue ")" ;
+LitVal. Value11 ::= Literal ;
+ObjVal. Value11 ::= Ident ;
+CtorVal. Value11 ::= UIdent ;
+QObjVal. Value11 ::= Qualifier Ident ;
+UnitVal. Value11 ::= "()" ;
+
+TupValList. TupleValue ::= Value11 "," TupleValue ;
+TupValTail. TupleValue ::= Value11 "," Value11 ;
+
+Qual. Qualifier1 ::= Ident "." ;
+_. Qualifier ::= Qualifier1 ;
+Quals. Qualifier ::= Qualifier Qualifier1 ;
+ThisQual. Qualifier ::= "this." ;
+DataQual. Qualifier ::= "this.data." ;
+NewQual. Qualifier ::= "new." ;
+
+MatchVal. Value10 ::= "match" Value11 "{" [MatchValueClause] "}" ;
+
+AppVal. Value9 ::= Value9 Value11 ;
+
+CompVal. Value8 ::= Value8 "@" Value9 ;
+
+PowVal. Value7 ::= Value7 "^" Value8 ;
+
+MulVal. Value6 ::= Value6 "*" Value7 ;
+DivVal. Value6 ::= Value6 "/" Value7 ;
+ModVal. Value6 ::= Value6 "mod" Value7 ;
+
+AddVal. Value5 ::= Value5 "+" Value6 ;
+SubVal. Value5 ::= Value5 "-" Value6 ;
+
+NotVal. Value4 ::= "not" Value9 ;
+
+EqVal. Value3 ::= Value3 "==" Value4 ;
+NEqVal. Value3 ::= Value3 "!=" Value4 ;
+LessVal. Value3 ::= Value3 "<" Value4 ;
+GreaterVal. Value3 ::= Value3 ">" Value4 ;
+LEqVal. Value3 ::= Value3 "<=" Value4 ;
+GEqVal. Value3 ::= Value3 ">=" Value4 ;
+
+AndVal. Value2 ::= Value2 "and" Value3 ;
+
+OrVal. Value1 ::= Value1 "or" Value2 ;
+
+SeqVal. Value ::= Value1 "|" Value ;
+
+MatchValClause. MatchValueClause ::= Pattern "=>" Value ;
+
+separator MatchValueClause "," ;
+
+AdHocFld. AdHocFieldDecl ::= Declaration "=" Value ;
+terminator AdHocFieldDecl ";" ;
+
+DataAss. FieldAss ::= Ident "=" Value ;
+separator FieldAss "," ;
+
+coercions Value 12;
+
+EmptyStmt. Statement5 ::= "{ }" ;
+StmtBlock. Statement5 ::= "{" [Statement] "}" ;
+StmtBlockWDecls. Statement5 ::= "{" [Statement] "where" [LocalFunDecl] "}" ;
+
+RetStmt. Statement4 ::= "return" ";" ;
+RetValStmt. Statement4 ::= "return" Value ";";
+CntStmt. Statement4 ::= "continue" ";" ;
+BrkStmt. Statement4 ::= "break" ";" ;
+YieldStmt. Statement4 ::= "yield" Value ";" ;
+_. Statement4 ::= Statement5 ;
+
+MatchStmt. Statement3 ::= "match" Value "{" [MatchStatementClause] "}" ;
+WhileStmt. Statement3 ::= "while" Value Statement5 ;
+ForInStmt. Statement3 ::= "for" Pattern "in" Value Statement5 ;
+CondStmt. Statement3 ::= ConditionalStatement ;
+_. Statement3 ::= Statement4 ;
+
+DconStmt. Statement2 ::= Pattern "=" Value ";" ;
+DeclStmt. Statement2 ::= LocalObjDecl ";" ;
+_. Statement2 ::= Statement3 ;
+
+AssStmt. Statement1 ::= Ident ":=" Value ";" ;
+AddStmt. Statement1 ::= Ident "+=" Value ";" ;
+SubStmt. Statement1 ::= Ident "-=" Value ";" ;
+MulStmt. Statement1 ::= Ident "*=" Value ";" ;
+DivStmt. Statement1 ::= Ident "/=" Value ";" ;
+PowStmt. Statement1 ::= Ident "^=" Value ";" ;
+CompStmt. Statement1 ::= Ident "@=" Value ";" ;
+QAssStmt. Statement1 ::= Qualifier Ident ":=" Value ";" ;
+QAddStmt. Statement1 ::= Qualifier Ident "+=" Value ";" ;
+QSubStmt. Statement1 ::= Qualifier Ident "-=" Value ";" ;
+QMulStmt. Statement1 ::= Qualifier Ident "*=" Value ";" ;
+QDivStmt. Statement1 ::= Qualifier Ident "/=" Value ";" ;
+QPowStmt. Statement1 ::= Qualifier Ident "^=" Value ";" ;
+QCompStmt. Statement1 ::= Qualifier Ident "@=" Value ";" ;
+_. Statement1 ::= Statement2 ;
+
+EvalStmt. Statement ::= "eval" Value9 ";" ;
+_. Statement ::= Statement1 ;
+
+MatchStmtClause. MatchStatementClause ::= Pattern "=>" Statement4 ;
+
+separator MatchStatementClause "" ;
+
+IfElifStmts. ConditionalStatement ::= IfStatement [ElseIfStatement] ;
+IfElifElseStmts. ConditionalStatement ::= IfStatement [ElseIfStatement] ElseStatement ;
+
+IfStmt. IfStatement ::= "if" Value Statement5 ;
+ElifStmt. ElseIfStatement ::= "else if" Value Statement5 ;
+ElseStmt. ElseStatement ::= "else" Statement5 ;
+
+separator ElseIfStatement "" ;
+
+LocSVar. VarSpecifier ::= "var" ;
+LocSVal. VarSpecifier ::= "val" ;
+
+separator nonempty Statement "" ;
+
+LocTHint. LocalFunDecl ::= TypeHint;
+LocFDecl. LocalFunDecl ::= FunDecl;
+LocVDecl. LocalObjDecl ::= VarSpecifier Declaration ;
+
+terminator nonempty LocalFunDecl ";" ;
+
+--PatLit. Pattern2 ::= Literal ;
+--_. Pattern1 ::= Pattern2 ;
+PatDecl. Pattern1 ::= LocalObjDecl ;
+PatData. Pattern1 ::= "{" [FieldPattern] "}" ;
+PatTup. Pattern1 ::= "(" TuplePattern ")" ;
+PatDisc. Pattern1 ::= "_" ;
+_. Pattern ::= Pattern1 ;
+PatCtor. Pattern ::= UIdent "{" [FieldPattern] "}" ;
+
+PatTupList. TuplePattern ::= Pattern "," TuplePattern ;
+PatTupTail. TuplePattern ::= Pattern "," Pattern ;
+
+PatFld. FieldPattern ::= Ident ":" Pattern ;
+
+separator nonempty FieldPattern "," ;
+
+TSig. TypeSignature ::= UIdent [TypeArgument] ;
+ValTDecl. TypeDecl ::= "value" TypeSignature "=" "{" TypeBody "}" ;
+RefTDecl. TypeDecl ::= "ref" TypeSignature "=" "{" TypeBody "}" ;
+ValTUDecl. TypeDecl ::= "value" TypeSignature "=" "{" [TypeVariantDecl] "}" ;
+
+TArg. TypeArgument ::= Ident ;
+
+separator TypeArgument "" ;
+
+TVarDecl. TypeVariantDecl ::= "variant" UIdent "=" "{" TypeBody "}";
+
+terminator nonempty TypeVariantDecl ";" ;
+
+DataTBody. TypeBody ::= "data" "=" "{" [FieldDecl] "}" [MemberDecl];
+TBody. TypeBody ::= [MemberDecl] ;
+
+TFldDecl. FieldDecl ::= TypeHint ;
+TMemTHint. MemberDecl ::= TypeHint ;
+TMemFDecl. MemberDecl ::= FunDecl ;
+
+terminator nonempty FieldDecl ";" ;
+terminator MemberDecl ";" ;
+
+comment "//" ;
+comment "/*" "*/" ;
