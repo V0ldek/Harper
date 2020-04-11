@@ -42,6 +42,8 @@ packages:
 extra-deps: 
 - alex-3.2.4@sha256:fcf1971fb513eab886072d1f705475f04fb65261a4d81361bede9d86056b474b,4054
 - happy-1.19.9@sha256:f8c774230735a390c287b2980cfcd2703d24d8dde85a01ea721b7b4b4c82944f,4667
+- HUnit-1.6.0.0@sha256:8014b27c884becd8041214a1ab263fa92244ca62700a911aff604a1047869298,1570
+- call-stack-0.2.0@sha256:5ce796b78d5f964468ec6fe0717b4e7d0430817f37370c47b3e6b38e345b6643,1202
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
