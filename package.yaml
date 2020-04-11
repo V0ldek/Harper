@@ -50,3 +50,5 @@ tests:
     dependencies:
     - Harper
     - HUnit
+    - test-framework
+    - test-framework-hunit

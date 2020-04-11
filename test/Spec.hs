@@ -1,4 +1,7 @@
+import Test.Framework
+import Test.Framework.Providers.HUnit
 import Test.HUnit
+
 import Harper.Lexer
 import Harper.Parser
 import Harper.Engine
@@ -54,7 +57,7 @@ issue1_lazy = TProg "\
 \main = true or (fun 42);"
     (PBool True)
 
-testProg :: TestProgram -> Test
+testProg :: TestProgram -> Test.HUnit.Test
 testProg (TProg i o) = TestCase (assertEqual "Expected output" o run)
     where run = let ts = lexer i
                  in case parser ts of
@@ -72,4 +75,4 @@ tests = TestList [TestLabel "issue1_sqr" (testProg issue1_sqr),
                  ]
 
 main :: IO ()
-main = runTestTT tests >>= print
+main = defaultMain $ hUnitTestToTests tests
