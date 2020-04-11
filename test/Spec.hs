@@ -14,7 +14,7 @@ issue1_sqr = TProg "\
 \sqr n = n * n;\n\
 
 \main = sqr 42;" 
-    (PInt 1764)
+    (PInt 1763)
 
 issue1_partial = TProg "\
 \f a b c d = (c ^ d / a) * 123 + b;\n\
