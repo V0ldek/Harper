@@ -55,7 +55,6 @@ BoolLit. Literal ::= BoolLiteral ;
 ThisVal. Value12 ::= "this" ;
 AdHocVal. Value11 ::= "val" "{" [AdHocFieldDecl] "}" ;
 VCtorVal. Value11 ::= "val" UIdent "{" [FieldAss] "}" ;
-LamVal. Value11 ::= "\\" [LambdaArg] "=>" FunBody;
 TupVal. Value11 ::= "(" TupleValue ")" ;
 LitVal. Value11 ::= Literal ;
 ObjVal. Value11 ::= Ident ;
@@ -98,8 +97,9 @@ LEqVal. Value3 ::= Value3 "<=" Value4 ;
 GEqVal. Value3 ::= Value3 ">=" Value4 ;
 
 AndVal. Value2 ::= Value2 "and" Value3 ;
+OrVal. Value2 ::= Value2 "or" Value3 ;
 
-OrVal. Value1 ::= Value1 "or" Value2 ;
+LamVal. Value1 ::= "\\" [LambdaArg] "=>" FunBody;
 
 SeqVal. Value ::= Value1 "|" Value ;
 

@@ -4,17 +4,16 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 12e89193df642997e96e110c3039a08784c26be64f7e802d8bf4a9801e9e0d80
+-- hash: 2505378526f03d2e56a7eafd10806ee763914cbb9712774dfc34e204ab9924e3
 
 name:           Harper
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/Harper#readme>
-homepage:       https://github.com/githubuser/Harper#readme
-bug-reports:    https://github.com/githubuser/Harper/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2020 Author name here
-license:        BSD3
+description:    Please see the README on GitHub at <https://github.com/V0ldek/Harper#readme>
+homepage:       https://github.com/V0ldek/Harper#readme
+bug-reports:    https://github.com/V0ldek/Harper/issues
+author:         Mateusz Gienieczko
+copyright:      2020 Mateusz Gienieczko
+license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
@@ -23,7 +22,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/Harper
+  location: https://github.com/V0ldek/Harper
 
 library
   exposed-modules:
@@ -33,19 +32,33 @@ library
   hs-source-dirs:
       src
   build-depends:
-      base >=4.7 && <5
+      array >=0.5 && <0.6
+    , base >=4.7 && <5
+    , containers >=0.6 && <0.7
+    , mtl >=2.2 && <2.3
   default-language: Haskell2010
 
 executable Harper-exe
   main-is: Main.hs
   other-modules:
+      ErrM
+      Harper.Abs
+      Harper.Engine
+      Harper.Engine.Comparable
+      Harper.Engine.Object
+      Harper.Lexer
+      Harper.Parser
+      Harper.Printer
       Paths_Harper
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Harper
+    , array >=0.5 && <0.6
     , base >=4.7 && <5
+    , containers >=0.6 && <0.7
+    , mtl >=2.2 && <2.3
   default-language: Haskell2010
 
 test-suite Harper-test
@@ -58,5 +71,8 @@ test-suite Harper-test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Harper
+    , array >=0.5 && <0.6
     , base >=4.7 && <5
+    , containers >=0.6 && <0.7
+    , mtl >=2.2 && <2.3
   default-language: Haskell2010
