@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2505378526f03d2e56a7eafd10806ee763914cbb9712774dfc34e204ab9924e3
+-- hash: 1292c5eacfd1a96f86a094038ec24eddeefd8228f9afd3eda0d7b94e16f50b6a
 
 name:           Harper
 version:        0.1.0.0
@@ -26,7 +26,14 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      ErrM
+      Harper.Abs
+      Harper.Engine
+      Harper.Engine.Comparable
+      Harper.Engine.Object
+      Harper.Lexer
+      Harper.Parser
+      Harper.Printer
   other-modules:
       Paths_Harper
   hs-source-dirs:
@@ -41,14 +48,6 @@ library
 executable Harper-exe
   main-is: Main.hs
   other-modules:
-      ErrM
-      Harper.Abs
-      Harper.Engine
-      Harper.Engine.Comparable
-      Harper.Engine.Object
-      Harper.Lexer
-      Harper.Parser
-      Harper.Printer
       Paths_Harper
   hs-source-dirs:
       app
@@ -70,9 +69,12 @@ test-suite Harper-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      Harper
+      HUnit
+    , Harper
     , array >=0.5 && <0.6
     , base >=4.7 && <5
     , containers >=0.6 && <0.7
     , mtl >=2.2 && <2.3
+    , test-framework
+    , test-framework-hunit
   default-language: Haskell2010
