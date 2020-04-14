@@ -154,6 +154,7 @@ data MatchStatementClause = MatchStmtClause Pattern Statement
 data ConditionalStatement
     = IfElifStmts IfStatement [ElseIfStatement]
     | IfElifElseStmts IfStatement [ElseIfStatement] ElseStatement
+    | LinCondStmt [IfStatement] -- Internal transformation.
   deriving (Eq, Ord, Show, Read)
 
 data IfStatement = IfStmt Value Statement

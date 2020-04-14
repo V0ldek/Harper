@@ -13,7 +13,9 @@ import Data.List
 
 import Harper.Abs
 import Harper.Engine.Comparable
+import Harper.Engine.Conditionals
 import Harper.Engine.Object
+import Harper.Engine.Values
 import ErrM
 
 type Interpreter a = ReaderT Env (StateT Store (Writer String)) a
@@ -45,7 +47,12 @@ decls ds = do
     where 
         declToFun e (FDecl i params (FValBody body)) = case [i | FArg i <- params] of 
                                                            [] -> Thunk body e
-                                                           ps -> Fun ps body e
+                                                           ps -> Fun ps (RetValStmt body) e
+        declToFun e (FDecl i params (FStmtBody body)) = Fun [i | FArg i <- params] body e
+
+fBodyToStmt :: FunBody -> Statement
+fBodyToStmt (FStmtBody s) = s
+fBodyToStmt (FValBody v) = RetValStmt v
 
 eval :: Value -> Interpreter Object
 eval l@(LitVal (IntLit n))       = return $ PInt n
@@ -72,6 +79,11 @@ eval (AppVal v1 v2) = do
     o1 <- eval v1
     apply o1 v2
 
+eval (LamVal params body) = do
+    env <- ask
+    let ps = [i | LamArg (PatDecl (LocVDecl LocSVal (Decl i))) <- params]
+    return $ Fun ps (fBodyToStmt body) env
+
 eval (AddVal v1 v2)     = evalAddOp v1 v2
 eval (SubVal v1 v2)     = evalSubOp v1 v2
 eval (MulVal v1 v2)     = evalMulOp v1 v2
@@ -89,16 +101,41 @@ eval (OrVal v1 v2)      = evalOrOp v1 v2
 eval (NotVal v)         = evalNotOp v
 
 apply :: Object -> Value -> Interpreter Object
-apply (Fun (p:ps) v e) argV = do
+apply (Fun (p:ps) s e) argV = do
     st <- get
     env <- ask
     let l  = newloc st
         e' = Map.insert p l e
     modify (Map.insert l (Thunk argV env))
     case ps of
-        [] -> local (Map.union e') (eval v)
-        _  -> return $ Fun ps v e'
+        [] -> local (Map.union e') (exec s return (error "exec returned without a value"))
+        _  -> return $ Fun ps s e'
 apply _ _ = error "Applied to too many arguments"
+
+-- Execution uses continuation-passing-style to implement control flow. 
+-- Since statements can only be executed in a body of a function, they take at least two continuations:
+-- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
+-- the place of call. Using k continues the execution to the next statement.
+exec :: Statement -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
+exec (RetValStmt v) kRet _ = do
+    o <- eval v
+    kRet o
+exec RetStmt kRet _ = kRet PUnit
+exec (StmtBlock []) _ k = k
+exec (StmtBlock (s:ss)) kRet k = exec s kRet (exec (StmtBlock ss) kRet k)
+exec (CondStmt (LinCondStmt ifs)) kRet k = execIfs ifs kRet k
+exec (CondStmt c) kRet k = exec (CondStmt (linearizeCond c)) kRet k
+
+-- Executes a linear conditional. 
+-- Looks for the first if with a predicate evaluating to true and executes that branch.
+execIfs :: [IfStatement] -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
+execIfs [] kRet k = k
+execIfs ((IfStmt pred stmt):ifs) kRet k = do
+    b <- eval pred
+    case b of
+        PBool True  -> exec stmt kRet k
+        PBool False -> execIfs ifs kRet k
+        _           -> error "Conditional predicate must be a bool."
 
 -- OPERATORS
 
