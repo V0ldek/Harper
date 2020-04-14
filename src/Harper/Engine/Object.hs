@@ -15,14 +15,15 @@ type Store = Map.Map Ptr Object
 type Env = Map.Map Ident Ptr
 
 data Object = Fun { params :: [Ident],
-                    body :: Value,
+                    body :: Statement,
                     env :: Env }
-              | Thunk { body :: Value,
+              | Thunk { value :: Value,
                         env :: Env }
               | PInt Integer
               | PBool Bool
               | PStr String
               | PChar Char
+              | PUnit
             deriving (Show, Eq, Ord)
 
 isValue :: Object -> Bool

@@ -57,6 +57,42 @@ issue1_lazy = TProg "\
 \main = true or (fun 42);"
     (PBool True)
 
+issue2_fac = TProg "\
+\fac n = {\
+\  if (n <= 0) {\
+\    return 1;\
+\  }\
+\  else {\
+\    return fac (n - 1) * n;\
+\  }\
+\};\
+\\n\
+\main = fac 42;\
+\"
+    (PInt 1405006117752879898543142606244511569936384000000000)
+
+issue2_lam = TProg "\
+\f n = {\
+\  if n mod 2 == 0 {\
+\    return (\val x val y => x * y * n);\
+\  }\
+\  else if n == 37 {\
+\    return (\val x val y => 42);\
+\  }\
+\  else {\
+\    return (\val x val y => x + y + n);\
+\  }\
+\};\
+\\n\
+\main = f 42 3 4 == 504 and \
+\       f 37 100 100 == 42 and \
+\       f 37 1000 1000 == 42 and \
+\       f 0 2 2 == 0 and \
+\       f 1 2 3 == 6 and \
+\       f 17 37 47 == 101;\
+\"
+    (PBool True)
+
 testProg :: TestProgram -> Test.HUnit.Test
 testProg (TProg i o) = TestCase (assertEqual "Expected output" o run)
     where run = let ts = lexer i
