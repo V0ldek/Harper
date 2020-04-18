@@ -3,11 +3,11 @@ where
 
 import Harper.Abs
 
-litTrue :: Value
-litTrue = LitVal (BoolLit BTrue)
+litTrue :: Value Pos
+litTrue = LitVal Nothing (BoolLit Nothing (BTrue Nothing))
 
-litFalse :: Value
-litFalse = LitVal (BoolLit BFalse)
+litFalse :: Value Pos
+litFalse = LitVal Nothing (BoolLit Nothing (BFalse Nothing))
 
-unit :: Value
-unit = UnitVal -- TODO: Turn into a literal.
+unit :: Value Pos
+unit = UnitVal Nothing -- TODO: Turn into a literal.
