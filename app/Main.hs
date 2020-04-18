@@ -21,6 +21,7 @@ import           Harper.Engine
 
 
 import           ErrM
+import           OutputM
 
 type ParseFun a = [Token] -> Err a
 
@@ -31,10 +32,10 @@ type Verbosity = Int
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
-runFile :: Verbosity -> ParseFun Program -> FilePath -> IO ()
+runFile :: Verbosity -> ParseFun (Program Pos) -> FilePath -> IO ()
 runFile v p f = putStrLn f >> readFile f >>= run v p
 
-run :: Verbosity -> ParseFun Program -> String -> IO ()
+run :: Verbosity -> ParseFun (Program Pos) -> String -> IO ()
 run v p s =
     let ts = myLLexer s
     in  case p ts of
@@ -47,10 +48,13 @@ run v p s =
             Ok tree -> do
                 putStrLn "\nParse Successful!"
                 showTree v tree
-                let (res, log) = runInterpreter tree 
-                putStrLn $ "\nResult: " ++ show res
-                putStrLn $ "\n\nLog: " ++ log
-
+                let Out out res = runInterpreter tree
+                putStrLn $ out ""
+                case res of
+                    Ok v  -> putStrLn $ "\nExecution ended with value: " ++ show v
+                    Bad s -> do
+                        putStrLn $ "\nExecution terminated with an error: " ++ s
+                        exitFailure
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do

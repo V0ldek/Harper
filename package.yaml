@@ -42,7 +42,19 @@ executables:
 tests:
   Harper-test:
     main:                Spec.hs
-    source-dirs:         test
+    source-dirs:         test/Harper
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - Harper
+    - HUnit
+    - test-framework
+    - test-framework-hunit
+  OutputM-test:
+    main:                Spec.hs
+    source-dirs:         test/OutputM
     ghc-options:
     - -threaded
     - -rtsopts

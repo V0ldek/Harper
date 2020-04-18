@@ -1,12 +1,7 @@
-module Harper.Engine.Object (
-  Ptr, Store, Env,
-  Object (..),
-  isValue,
-  intValue, boolValue, strValue, charValue,
-  newloc, newlocs
-)
+module Harper.Engine.Object
 where
 import qualified Data.Map as Map
+import qualified Harper.Engine.Error as Error
 
 import Harper.Abs
 
@@ -15,42 +10,60 @@ type Store = Map.Map Ptr Object
 type Env = Map.Map Ident Ptr
 
 data Object = Fun { params :: [Ident],
-                    body :: Statement,
+                    body :: Statement Pos,
                     env :: Env }
-              | Thunk { value :: Value,
-                        env :: Env }
-              | PInt Integer
-              | PBool Bool
-              | PStr String
-              | PChar Char
-              | PUnit
-            deriving (Show, Eq, Ord)
+            | Thunk { value :: Value Pos,
+                      env :: Env }
+            | PInt Integer
+            | PBool Bool
+            | PStr String
+            | PChar Char
+            | PUnit
+            deriving (Eq, Ord)
+
+instance Show Object where
+  show (PInt n)    = show n
+  show (PBool b)   = show b
+  show (PStr s)    = drop 1 $ init s
+  show (PChar c)   = show c
+  show PUnit       = "()"
+  show (Thunk v e) = "Thunk " ++ show v ++ " " ++ show e
+  show (Fun p b e) = "Fun " ++ show p ++ " " ++ show b ++ " " ++ show e
 
 isValue :: Object -> Bool
 isValue Fun {}   = False
 isValue Thunk {} = False
 isValue _        = True
 
-intValue :: Object -> Integer
-intValue (PInt n) = n
-intValue _        = error "Expected integer value"
+intValue :: Object -> Maybe Integer
+intValue (PInt n) = return n
+intValue o        = Nothing
 
-boolValue :: Object -> Bool
-boolValue (PBool b) = b
-boolValue _         = error "Expected boolean value"
+boolValue :: Object -> Maybe Bool
+boolValue (PBool b) = return b
+boolValue o         = Nothing
 
-strValue :: Object -> String
-strValue (PStr s) = s
-strValue _        = error "Expected string value"
+strValue :: Object -> Maybe String
+strValue (PStr s) = return s
+strValue o        = Nothing
 
-charValue :: Object -> Char
-charValue (PChar c) = c
-charValue _         = error "Expected char value"
+charValue :: Object -> Maybe Char
+charValue (PChar c) = return c
+charValue o         = Nothing
+
+objType :: Object -> String
+objType (PInt _) = "Integer"
+objType (PBool _) = "Bool"
+objType (PStr _) = "String"
+objType (PChar _) = "Char"
+objType PUnit = "Unit"
+objType Fun {} = "Function"
+objType _ = "undefined"
 
 newloc :: Store -> Ptr
 newloc s 
-    | s == Map.empty = 0
-    | otherwise      = fst (Map.findMax s) + 1
+    | Map.null s = 0
+    | otherwise  = fst (Map.findMax s) + 1
 
 newlocs :: Int -> Store -> [Ptr]
 newlocs n s = let l = newloc s 

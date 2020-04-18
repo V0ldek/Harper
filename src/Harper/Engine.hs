@@ -12,31 +12,35 @@ import qualified Data.Map as Map
 import Data.List
 
 import Harper.Abs
-import Harper.Engine.Comparable
+import Harper.Printer
 import Harper.Engine.Conditionals
+import qualified Harper.Engine.Error as Error
 import Harper.Engine.Object
 import Harper.Engine.Values
-import ErrM
+import Harper.Engine.Output
+import OutputM
 
-type Interpreter a = ReaderT Env (StateT Store (Writer String)) a
+type Interpreter a = ReaderT Env (StateT Store (Output ShowS)) a
 
-runInterpreter :: Program -> (Object, String)
-runInterpreter tree = runWriter $ evalStateT (runReaderT (interpret tree) Map.empty) Map.empty
+runInterpreter :: Program Pos -> HarperOutput Object
+runInterpreter tree = evalStateT (runReaderT (interpret tree) Map.empty) Map.empty
 
-interpret :: Program -> Interpreter Object
-interpret (Prog ds) = do 
-    let fds = [fd | TopLvlFDecl fd <- ds]
+raise :: HarperOutput a -> Interpreter a
+raise = lift . lift
+
+interpret :: Program Pos -> Interpreter Object
+interpret (Prog _ ds) = do 
+    let fds = [fd | TopLvlFDecl _ fd <- ds]
     env <- decls fds
-    tell "Executing main"
-    local env (eval $ ObjVal $ Ident "main")
+    local env (eval $ ObjVal Nothing (Ident "main"))
 
-decls :: [FunDecl] -> Interpreter (Env -> Env)
+decls :: [FunDecl Pos] -> Interpreter (Env -> Env)
 decls ds = do
     st <- get
     env <- ask
     let n     = length ds
         ls    = newlocs n st
-        is    = [i | FDecl i _ _ <- ds]
+        is    = [i | FDecl _ i _ _ <- ds]
         isls  = zip is ls
         env'  = Map.fromList isls
         fobjs = map (declToFun (Map.union env' env)) ds
@@ -45,153 +49,60 @@ decls ds = do
     modify (Map.union st')
     return (Map.union env')
     where 
-        declToFun e (FDecl i params (FValBody body)) = case [i | FArg i <- params] of 
+        declToFun e (FDecl _ i params (FValBody a body)) = case [i | FArg _ i <- params] of 
                                                            [] -> Thunk body e
-                                                           ps -> Fun ps (RetValStmt body) e
-        declToFun e (FDecl i params (FStmtBody body)) = Fun [i | FArg i <- params] body e
+                                                           ps -> Fun ps (RetValStmt a body) e
+        declToFun e (FDecl _ i params (FStmtBody _ body)) = Fun [i | FArg _ i <- params] body e
 
-fBodyToStmt :: FunBody -> Statement
-fBodyToStmt (FStmtBody s) = s
-fBodyToStmt (FValBody v) = RetValStmt v
+fBodyToStmt :: FunBody Pos -> Statement Pos
+fBodyToStmt (FStmtBody _ s) = s
+fBodyToStmt (FValBody a v) = RetValStmt a v
 
-eval :: Value -> Interpreter Object
-eval l@(LitVal (IntLit n))       = return $ PInt n
-eval l@(LitVal (BoolLit BTrue))  = return $ PBool True
-eval l@(LitVal (BoolLit BFalse)) = return $ PBool False
-eval l@(LitVal (StrLit s))       = return $ PStr s
-eval l@(LitVal (CharLit c))      = return $ PChar c
+eval :: Value Pos -> Interpreter Object
+eval (LitVal _ (IntLit _ n))           = return $ PInt n
+eval (LitVal _ (BoolLit _ (BTrue _)))  = return $ PBool True
+eval (LitVal _ (BoolLit _ (BFalse _))) = return $ PBool False
+eval (LitVal _ (StrLit _ s))           = return $ PStr s
+eval (LitVal _ (CharLit _ c))          = return $ PChar c
+eval (UnitVal _)                       = return PUnit
 
-eval (ObjVal i) = do
-    tell $ "\nEvaluating " ++ show i
+eval (ObjVal _ i) = do
+    let Ident s = i
     l <- asks (Map.! i)
     o <- gets (Map.! l)
     case o of
         Thunk v e -> do
             o' <- local (Map.union e) (eval v)
             modify (Map.insert l o')
-            tell $ "\nWas a thunk, evaluated into:   " ++ show o'
             return o'
-        _ -> do
-            tell $ "\nEvaluated into:   " ++ show o
-            return o
+        Fun [] body e -> local (Map.union e) (call body)
+        _ -> return o
 
-eval (AppVal v1 v2) = do
+eval (AppVal _ v1 v2) = do
     o1 <- eval v1
     apply o1 v2
 
-eval (LamVal params body) = do
+eval (LamVal _ params body) = do
     env <- ask
-    let ps = [i | LamArg (PatDecl (LocVDecl LocSVal (Decl i))) <- params]
+    let ps = [i | LamArg _ (PatDecl _ (LocVDecl _ (LocSVal _) (Decl _ i))) <- params]
     return $ Fun ps (fBodyToStmt body) env
 
-eval (AddVal v1 v2)     = evalAddOp v1 v2
-eval (SubVal v1 v2)     = evalSubOp v1 v2
-eval (MulVal v1 v2)     = evalMulOp v1 v2
-eval (DivVal v1 v2)     = evalDivOp v1 v2
-eval (PowVal v1 v2)     = evalPowOp v1 v2
-eval (ModVal v1 v2)     = evalModOp v1 v2
-eval (EqVal v1 v2)      = evalEqOp v1 v2
-eval (NEqVal v1 v2)     = evalNEqOp v1 v2
-eval (LEqVal v1 v2)     = evalLEqOp v1 v2
-eval (GEqVal v1 v2)     = evalGEqOp v1 v2
-eval (LessVal v1 v2)    = evalLessOp v1 v2
-eval (GreaterVal v1 v2) = evalGreaterOp v1 v2
-eval (AndVal v1 v2)     = evalAndOp v1 v2
-eval (OrVal v1 v2)      = evalOrOp v1 v2
-eval (NotVal v)         = evalNotOp v
+eval v@AddVal {} = evalIntBinOp v
+eval v@SubVal {} = evalIntBinOp v
+eval v@MulVal {} = evalIntBinOp v
+eval v@DivVal {} = evalIntBinOp v
+eval v@PowVal {} = evalIntBinOp v
+eval v@ModVal {} = evalIntBinOp v
 
-apply :: Object -> Value -> Interpreter Object
-apply (Fun (p:ps) s e) argV = do
-    st <- get
-    env <- ask
-    let l  = newloc st
-        e' = Map.insert p l e
-    modify (Map.insert l (Thunk argV env))
-    case ps of
-        [] -> local (Map.union e') (exec s return (error "exec returned without a value"))
-        _  -> return $ Fun ps s e'
-apply _ _ = error "Applied to too many arguments"
+eval v@EqVal {}  = evalEqOp v
+eval v@NEqVal {} = evalEqOp v
 
--- Execution uses continuation-passing-style to implement control flow. 
--- Since statements can only be executed in a body of a function, they take at least two continuations:
--- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
--- the place of call. Using k continues the execution to the next statement.
-exec :: Statement -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
-exec (RetValStmt v) kRet _ = do
-    o <- eval v
-    kRet o
-exec RetStmt kRet _ = kRet PUnit
-exec (StmtBlock []) _ k = k
-exec (StmtBlock (s:ss)) kRet k = exec s kRet (exec (StmtBlock ss) kRet k)
-exec (CondStmt (LinCondStmt ifs)) kRet k = execIfs ifs kRet k
-exec (CondStmt c) kRet k = exec (CondStmt (linearizeCond c)) kRet k
+eval v@LEqVal {}     = evalCmpOp v
+eval v@GEqVal {}     = evalCmpOp v
+eval v@LessVal {}    = evalCmpOp v
+eval v@GreaterVal {} = evalCmpOp v
 
--- Executes a linear conditional. 
--- Looks for the first if with a predicate evaluating to true and executes that branch.
-execIfs :: [IfStatement] -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
-execIfs [] kRet k = k
-execIfs ((IfStmt pred stmt):ifs) kRet k = do
-    b <- eval pred
-    case b of
-        PBool True  -> exec stmt kRet k
-        PBool False -> execIfs ifs kRet k
-        _           -> error "Conditional predicate must be a bool."
-
--- OPERATORS
-
-evalAddOp :: Value -> Value -> Interpreter Object
-evalSubOp :: Value -> Value -> Interpreter Object
-evalMulOp :: Value -> Value -> Interpreter Object
-evalDivOp :: Value -> Value -> Interpreter Object
-evalPowOp :: Value -> Value -> Interpreter Object
-evalModOp :: Value -> Value -> Interpreter Object
-
-evalAddOp = evalIntBinOp (+)
-evalSubOp = evalIntBinOp (-)
-evalMulOp = evalIntBinOp (*)
-evalDivOp = evalIntBinOp div
-evalPowOp = evalIntBinOp (^)
-evalModOp = evalIntBinOp mod
-
-evalIntBinOp :: (Integer -> Integer -> Integer) -> Value -> Value -> Interpreter Object
-evalIntBinOp f v1 v2 = do
-    o1 <- eval v1
-    o2 <- eval v2
-    let n1 = intValue o1
-        n2 = intValue o2
-    return $ PInt $ f n1 n2
-
-evalEqOp :: Value -> Value -> Interpreter Object
-evalNEqOp :: Value -> Value -> Interpreter Object
-evalLessOp :: Value -> Value -> Interpreter Object
-evalGreaterOp :: Value -> Value -> Interpreter Object
-evalLEqOp :: Value -> Value -> Interpreter Object
-evalGEqOp :: Value -> Value -> Interpreter Object
-evalEqOp      = evalCmpOp (==)
-evalNEqOp     = evalCmpOp (/=)
-evalLessOp    = evalCmpOp (<)
-evalGreaterOp = evalCmpOp (>)
-evalLEqOp     = evalCmpOp (<=)
-evalGEqOp     = evalCmpOp (>=)
-
-evalCmpOp :: (ComparableObject -> ComparableObject -> Bool) -> Value -> Value -> Interpreter Object
-evalCmpOp f v1 v2 = do
-    o1 <- eval v1
-    o2 <- eval v2
-    let cmp1 = CmpObj o1
-        cmp2 = CmpObj o2
-    return $ PBool $ f cmp1 cmp2
-
-evalNotOp :: Value -> Interpreter Object
-evalNotOp v = do
-    o <- eval v
-    case o of
-        PBool b -> return $ PBool $ not b
-        _       -> error "Expected Bool value to not operator."
-
-evalAndOp :: Value -> Value -> Interpreter Object
-evalOrOp :: Value -> Value -> Interpreter Object
-evalAndOp v1 v2 = do
+eval v@(AndVal _ v1 v2) = do
     o1 <- eval v1
     case o1 of
         PBool b1 -> if not b1 then return $ PBool False
@@ -199,9 +110,9 @@ evalAndOp v1 v2 = do
                         o2 <- eval v2
                         case o2 of
                             PBool b2 -> return $ PBool b2
-                            _        -> error "Expected Bool value to and operator."
-        _        -> error "Expected Bool value to and operator."
-evalOrOp v1 v2 = do
+                            _        -> raise $ Error.invType (objType o2) "Bool" v2 v
+        _        ->  raise $ Error.invType (objType o1) "Bool" v1 v
+eval v@(OrVal _ v1 v2) = do
     o1 <- eval v1
     case o1 of
         PBool b1 -> if b1 then return $ PBool True
@@ -209,5 +120,106 @@ evalOrOp v1 v2 = do
                         o2 <- eval v2
                         case o2 of
                             PBool b2 -> return $ PBool b2
-                            _        -> error "Expected Bool value to or operator."
-        _        -> error "Expected Bool value to or operator."
+                            _        -> raise $ Error.invType (objType o2) "Bool" v2 v
+        _        -> raise $ Error.invType (objType o1) "Bool" v1 v
+eval v'@(NotVal _ v)         = do
+    o <- eval v
+    case o of
+        PBool b -> return $ PBool $ not b
+        _       -> raise $ Error.invType (objType o) "Bool" v v'
+
+eval v = error ("Evaluating this type of values is not implemented yet: " ++ show v)
+
+apply :: Object -> Value Pos -> Interpreter Object
+apply (Fun (p:ps) s e) argV = do
+    st <- get
+    env <- ask
+    let l  = newloc st
+        e' = Map.insert p l e
+    modify (Map.insert l (Thunk argV env))
+    case ps of
+        [] -> local (Map.union e') (call s)
+        _  -> return $ Fun ps s e'
+apply _ argV = raise $ Error.overApp argV
+
+call :: Statement Pos -> Interpreter Object
+call s = exec s return f
+    where f = raise $ Error.noReturn s
+
+-- Execution uses continuation-passing-style to implement control flow. 
+-- Since statements can only be executed in a body of a function, they take at least two continuations:
+-- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
+-- the place of call. Using k continues the execution to the next statement.
+exec :: Statement Pos -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
+exec (RetValStmt _ v) kRet _ = do
+    o <- eval v
+    kRet o
+exec (RetStmt _) kRet _ = kRet PUnit
+exec (EmptyStmt _) _ k = k
+exec (StmtBlock _ []) _ k = k
+exec (StmtBlock a (s:ss)) kRet k = exec s kRet (exec (StmtBlock a ss) kRet k)
+exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
+exec s _ _ = error ("Executing this type of statements is not implemented yet: " ++ show s)
+
+-- Executes a linear conditional. 
+-- Looks for the first if with a predicate evaluating to true and executes that branch.
+execIfs :: [IfStatement Pos] -> (Object -> Interpreter Object) -> Interpreter Object -> Interpreter Object
+execIfs [] kRet k = k
+execIfs (s@(IfStmt p pred stmt):ifs) kRet k = do
+    b <- eval pred
+    case b of
+        PBool True  -> exec stmt kRet k
+        PBool False -> execIfs ifs kRet k
+        _           -> raise $ Error.invType (objType b) "Bool" pred s
+
+evalIntBinOp :: Value Pos  -> Interpreter Object
+evalIntBinOp v = do
+    let (op, v1, v2, cfz) = case v of
+                                AddVal _ v1 v2 -> ((+), v1, v2, False)
+                                SubVal _ v1 v2 -> ((-), v1, v2, False)
+                                MulVal _ v1 v2 -> ((*), v1, v2, False)
+                                DivVal _ v1 v2 -> (div, v1, v2, True)
+                                PowVal _ v1 v2 -> ((^), v1, v2, False)
+                                ModVal _ v1 v2 -> (mod, v1, v2, True)
+    o1 <- eval v1
+    o2 <- eval v2
+    case (intValue o1, intValue o2) of
+        (Nothing, Nothing) -> raise $ Error.invTypes (objType o1) (objType o2) "Integer" v1 v2 v
+        (Nothing, _)       -> raise $ Error.invType (objType o1) "Integer" v1 v
+        (_, Nothing)       -> raise $ Error.invType (objType o2) "Integer" v2 v
+        (Just n1, Just n2) -> do
+            when (cfz && n2 == 0) (raise $ Error.divByZero v2 v)
+            return $ PInt $ n1 `op` n2
+
+evalEqOp :: Value Pos -> Interpreter Object
+evalEqOp v = do
+    let (s, v1, v2) = case v of
+                          EqVal _ v1 v2 ->  (id, v1, v2)
+                          NEqVal _ v1 v2 -> (not, v1, v2)
+        f = return . PBool . s
+    o1 <- eval v1
+    o2 <- eval v2
+    case (o1, o2) of
+        (PInt n1, PInt n2)   -> f $ n1 == n2
+        (PBool b1, PBool b2) -> f $ b1 == b2
+        (PStr s1, PStr s2)   -> f $ s1 == s2
+        (PChar c1, PChar c2) -> f $ c1 == c2
+        (PUnit, PUnit)       -> f $ PUnit == PUnit
+        _                    -> raise $ Error.invEqTypes (objType o1) (objType o2) v1 v2 v
+
+evalCmpOp :: Value Pos -> Interpreter Object
+evalCmpOp v = do
+    let (s, v1, v2) = case v of
+                          LEqVal _ v1 v2 -> (\o -> o == LT || o == EQ, v1, v2)
+                          GEqVal _ v1 v2 -> (\o -> o == GT || o == EQ, v1, v2)
+                          LessVal _ v1 v2 ->  ((== LT), v1, v2)
+                          GreaterVal _ v1 v2 -> ((== GT), v1, v2)
+        f = return . PBool . s
+    o1 <- eval v1
+    o2 <- eval v2
+    case (o1, o2) of
+        (PInt n1, PInt n2)   -> f $ n1 `compare` n2
+        (PStr s1, PStr s2)   -> f $ s1 `compare` s2
+        (PChar c1, PChar c2) -> f $ c1 `compare` c2
+        (PUnit, PUnit)       -> f $ PUnit `compare` PUnit
+        _                    -> raise $ Error.invCmpTypes (objType o1) (objType o2) v1 v2 v

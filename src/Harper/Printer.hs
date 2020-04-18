@@ -69,6 +69,8 @@ mkEsc q s = case s of
 prPrec :: Int -> Int -> Doc -> Doc
 prPrec i j = if j<i then parenth else id
 
+instance Print Int where
+  prt _ x = doc (shows x)
 
 instance Print Integer where
   prt _ x = doc (shows x)
@@ -87,269 +89,269 @@ instance Print UIdent where
 
 
 
-instance Print Program where
+instance Print (Program a) where
   prt i e = case e of
-    Prog toplvldecls -> prPrec i 0 (concatD [prt 0 toplvldecls])
+    Prog _ toplvldecls -> prPrec i 0 (concatD [prt 0 toplvldecls])
 
-instance Print TopLvlDecl where
+instance Print (TopLvlDecl a) where
   prt i e = case e of
-    TopLvlFDecl fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
-    TopLvlTHint typehint -> prPrec i 0 (concatD [prt 0 typehint])
-    TopLvlTDecl typedecl -> prPrec i 0 (concatD [prt 0 typedecl])
+    TopLvlFDecl _ fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
+    TopLvlTHint _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    TopLvlTDecl _ typedecl -> prPrec i 0 (concatD [prt 0 typedecl])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
-instance Print TypeHint where
+instance Print (TypeHint a) where
   prt i e = case e of
-    THint id typeexpr -> prPrec i 0 (concatD [prt 0 id, doc (showString "::"), prt 0 typeexpr])
+    THint _ id typeexpr -> prPrec i 0 (concatD [prt 0 id, doc (showString "::"), prt 0 typeexpr])
 
-instance Print Declaration where
+instance Print (Declaration a) where
   prt i e = case e of
-    Decl id -> prPrec i 0 (concatD [prt 0 id])
-    DeclWHint typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    Decl _ id -> prPrec i 0 (concatD [prt 0 id])
+    DeclWHint _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
 
-instance Print TupleType where
+instance Print (TupleType a) where
   prt i e = case e of
-    TTupList typeexpr tupletype -> prPrec i 0 (concatD [prt 0 typeexpr, doc (showString ","), prt 0 tupletype])
-    TTupTail typeexpr1 typeexpr2 -> prPrec i 0 (concatD [prt 0 typeexpr1, doc (showString ","), prt 0 typeexpr2])
+    TTupList _ typeexpr tupletype -> prPrec i 0 (concatD [prt 0 typeexpr, doc (showString ","), prt 0 tupletype])
+    TTupTail _ typeexpr1 typeexpr2 -> prPrec i 0 (concatD [prt 0 typeexpr1, doc (showString ","), prt 0 typeexpr2])
 
-instance Print TypePurity where
+instance Print (TypePurity a) where
   prt i e = case e of
-    TImpure -> prPrec i 0 (concatD [doc (showString "impure")])
-    TSideE -> prPrec i 0 (concatD [doc (showString "sideeffect")])
+    TImpure _ -> prPrec i 0 (concatD [doc (showString "impure")])
+    TSideE _ -> prPrec i 0 (concatD [doc (showString "sideeffect")])
 
-instance Print FieldTypeExpr where
+instance Print (FieldTypeExpr a) where
   prt i e = case e of
-    TFld typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    TFld _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
   prtList _ [] = (concatD [])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
-instance Print TypeExpr where
+instance Print (TypeExpr a) where
   prt i e = case e of
-    TVar id -> prPrec i 4 (concatD [prt 0 id])
-    TCtor uident -> prPrec i 4 (concatD [prt 0 uident])
-    TPur typepurity -> prPrec i 4 (concatD [prt 0 typepurity])
-    TUnit -> prPrec i 4 (concatD [doc (showString "()")])
-    TTup tupletype -> prPrec i 3 (concatD [doc (showString "("), prt 0 tupletype, doc (showString ")")])
-    TAdHoc fieldtypeexprs -> prPrec i 3 (concatD [doc (showString "{"), prt 0 fieldtypeexprs, doc (showString "}")])
-    TApp typeexpr1 typeexpr2 -> prPrec i 2 (concatD [prt 2 typeexpr1, prt 3 typeexpr2])
-    TFun typeexpr1 typeexpr2 -> prPrec i 1 (concatD [prt 2 typeexpr1, doc (showString "->"), prt 1 typeexpr2])
+    TVar _ id -> prPrec i 4 (concatD [prt 0 id])
+    TCtor _ uident -> prPrec i 4 (concatD [prt 0 uident])
+    TPur _ typepurity -> prPrec i 4 (concatD [prt 0 typepurity])
+    TUnit _ -> prPrec i 4 (concatD [doc (showString "()")])
+    TTup _ tupletype -> prPrec i 3 (concatD [doc (showString "("), prt 0 tupletype, doc (showString ")")])
+    TAdHoc _ fieldtypeexprs -> prPrec i 3 (concatD [doc (showString "{"), prt 0 fieldtypeexprs, doc (showString "}")])
+    TApp _ typeexpr1 typeexpr2 -> prPrec i 2 (concatD [prt 2 typeexpr1, prt 3 typeexpr2])
+    TFun _ typeexpr1 typeexpr2 -> prPrec i 1 (concatD [prt 2 typeexpr1, doc (showString "->"), prt 1 typeexpr2])
 
-instance Print FunDecl where
+instance Print (FunDecl a) where
   prt i e = case e of
-    FDecl id funargs funbody -> prPrec i 0 (concatD [prt 0 id, prt 0 funargs, doc (showString "="), prt 0 funbody])
+    FDecl _ id funargs funbody -> prPrec i 0 (concatD [prt 0 id, prt 0 funargs, doc (showString "="), prt 0 funbody])
 
-instance Print FunArg where
+instance Print (FunArg a) where
   prt i e = case e of
-    FArg id -> prPrec i 0 (concatD [prt 0 id])
+    FArg _ id -> prPrec i 0 (concatD [prt 0 id])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print LambdaArg where
+instance Print (LambdaArg a) where
   prt i e = case e of
-    LamArg pattern -> prPrec i 0 (concatD [prt 0 pattern])
+    LamArg _ pattern -> prPrec i 0 (concatD [prt 0 pattern])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print FunBody where
+instance Print (FunBody a) where
   prt i e = case e of
-    FValBody value -> prPrec i 0 (concatD [prt 0 value])
-    FStmtBody statement -> prPrec i 0 (concatD [prt 0 statement])
+    FValBody _ value -> prPrec i 0 (concatD [prt 0 value])
+    FStmtBody _ statement -> prPrec i 0 (concatD [prt 0 statement])
 
-instance Print BoolLiteral where
+instance Print (BoolLiteral a) where
   prt i e = case e of
-    BTrue -> prPrec i 0 (concatD [doc (showString "true")])
-    BFalse -> prPrec i 0 (concatD [doc (showString "false")])
+    BTrue _ -> prPrec i 0 (concatD [doc (showString "true")])
+    BFalse _ -> prPrec i 0 (concatD [doc (showString "false")])
 
-instance Print Literal where
+instance Print (Literal a) where
   prt i e = case e of
-    IntLit n -> prPrec i 0 (concatD [prt 0 n])
-    CharLit c -> prPrec i 0 (concatD [prt 0 c])
-    StrLit str -> prPrec i 0 (concatD [prt 0 str])
-    BoolLit boolliteral -> prPrec i 0 (concatD [prt 0 boolliteral])
+    IntLit _ n -> prPrec i 0 (concatD [prt 0 n])
+    CharLit _ c -> prPrec i 0 (concatD [prt 0 c])
+    StrLit _ str -> prPrec i 0 (concatD [prt 0 str])
+    BoolLit _ boolliteral -> prPrec i 0 (concatD [prt 0 boolliteral])
 
-instance Print TupleValue where
+instance Print (TupleValue a) where
   prt i e = case e of
-    TupValList value tuplevalue -> prPrec i 0 (concatD [prt 11 value, doc (showString ","), prt 0 tuplevalue])
-    TupValTail value1 value2 -> prPrec i 0 (concatD [prt 11 value1, doc (showString ","), prt 11 value2])
+    TupValList _ value tuplevalue -> prPrec i 0 (concatD [prt 11 value, doc (showString ","), prt 0 tuplevalue])
+    TupValTail _ value1 value2 -> prPrec i 0 (concatD [prt 11 value1, doc (showString ","), prt 11 value2])
 
-instance Print Qualifier where
+instance Print (Qualifier a) where
   prt i e = case e of
-    Qual id -> prPrec i 1 (concatD [prt 0 id, doc (showString ".")])
-    Quals qualifier1 qualifier2 -> prPrec i 0 (concatD [prt 0 qualifier1, prt 1 qualifier2])
-    ThisQual -> prPrec i 0 (concatD [doc (showString "this.")])
-    DataQual -> prPrec i 0 (concatD [doc (showString "this.data.")])
-    NewQual -> prPrec i 0 (concatD [doc (showString "new.")])
+    Qual _ id -> prPrec i 1 (concatD [prt 0 id, doc (showString ".")])
+    Quals _ qualifier1 qualifier2 -> prPrec i 0 (concatD [prt 0 qualifier1, prt 1 qualifier2])
+    ThisQual _ -> prPrec i 0 (concatD [doc (showString "this.")])
+    DataQual _ -> prPrec i 0 (concatD [doc (showString "this.data.")])
+    NewQual _ -> prPrec i 0 (concatD [doc (showString "new.")])
 
-instance Print Value where
+instance Print (Value a) where
   prt i e = case e of
-    ThisVal -> prPrec i 12 (concatD [doc (showString "this")])
-    AdHocVal adhocfielddecls -> prPrec i 11 (concatD [doc (showString "val"), doc (showString "{"), prt 0 adhocfielddecls, doc (showString "}")])
-    VCtorVal uident fieldasss -> prPrec i 11 (concatD [doc (showString "val"), prt 0 uident, doc (showString "{"), prt 0 fieldasss, doc (showString "}")])
-    TupVal tuplevalue -> prPrec i 11 (concatD [doc (showString "("), prt 0 tuplevalue, doc (showString ")")])
-    LitVal literal -> prPrec i 11 (concatD [prt 0 literal])
-    ObjVal id -> prPrec i 11 (concatD [prt 0 id])
-    CtorVal uident -> prPrec i 11 (concatD [prt 0 uident])
-    QObjVal qualifier id -> prPrec i 11 (concatD [prt 0 qualifier, prt 0 id])
-    UnitVal -> prPrec i 11 (concatD [doc (showString "()")])
-    MatchVal value matchvalueclauses -> prPrec i 10 (concatD [doc (showString "match"), prt 11 value, doc (showString "{"), prt 0 matchvalueclauses, doc (showString "}")])
-    AppVal value1 value2 -> prPrec i 9 (concatD [prt 9 value1, prt 11 value2])
-    CompVal value1 value2 -> prPrec i 8 (concatD [prt 8 value1, doc (showString "@"), prt 9 value2])
-    PowVal value1 value2 -> prPrec i 7 (concatD [prt 7 value1, doc (showString "^"), prt 8 value2])
-    MulVal value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "*"), prt 7 value2])
-    DivVal value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "/"), prt 7 value2])
-    ModVal value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "mod"), prt 7 value2])
-    AddVal value1 value2 -> prPrec i 5 (concatD [prt 5 value1, doc (showString "+"), prt 6 value2])
-    SubVal value1 value2 -> prPrec i 5 (concatD [prt 5 value1, doc (showString "-"), prt 6 value2])
-    NotVal value -> prPrec i 4 (concatD [doc (showString "not"), prt 9 value])
-    EqVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "=="), prt 4 value2])
-    NEqVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "!="), prt 4 value2])
-    LessVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "<"), prt 4 value2])
-    GreaterVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString ">"), prt 4 value2])
-    LEqVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "<="), prt 4 value2])
-    GEqVal value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString ">="), prt 4 value2])
-    AndVal value1 value2 -> prPrec i 2 (concatD [prt 2 value1, doc (showString "and"), prt 3 value2])
-    OrVal value1 value2 -> prPrec i 2 (concatD [prt 2 value1, doc (showString "or"), prt 3 value2])
-    LamVal lambdaargs funbody -> prPrec i 1 (concatD [doc (showString "\\"), prt 0 lambdaargs, doc (showString "=>"), prt 0 funbody])
-    SeqVal value1 value2 -> prPrec i 0 (concatD [prt 1 value1, doc (showString "|"), prt 0 value2])
+    ThisVal _ -> prPrec i 12 (concatD [doc (showString "this")])
+    AdHocVal _ adhocfielddecls -> prPrec i 11 (concatD [doc (showString "val"), doc (showString "{"), prt 0 adhocfielddecls, doc (showString "}")])
+    VCtorVal _ uident fieldasss -> prPrec i 11 (concatD [doc (showString "val"), prt 0 uident, doc (showString "{"), prt 0 fieldasss, doc (showString "}")])
+    TupVal _ tuplevalue -> prPrec i 11 (concatD [doc (showString "("), prt 0 tuplevalue, doc (showString ")")])
+    LitVal _ literal -> prPrec i 11 (concatD [prt 0 literal])
+    ObjVal _ id -> prPrec i 11 (concatD [prt 0 id])
+    CtorVal _ uident -> prPrec i 11 (concatD [prt 0 uident])
+    QObjVal _ qualifier id -> prPrec i 11 (concatD [prt 0 qualifier, prt 0 id])
+    UnitVal _ -> prPrec i 11 (concatD [doc (showString "()")])
+    MatchVal _ value matchvalueclauses -> prPrec i 10 (concatD [doc (showString "match"), prt 11 value, doc (showString "{"), prt 0 matchvalueclauses, doc (showString "}")])
+    AppVal _ value1 value2 -> prPrec i 9 (concatD [prt 9 value1, prt 11 value2])
+    CompVal _ value1 value2 -> prPrec i 8 (concatD [prt 8 value1, doc (showString "@"), prt 9 value2])
+    PowVal _ value1 value2 -> prPrec i 7 (concatD [prt 7 value1, doc (showString "^"), prt 8 value2])
+    MulVal _ value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "*"), prt 7 value2])
+    DivVal _ value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "/"), prt 7 value2])
+    ModVal _ value1 value2 -> prPrec i 6 (concatD [prt 6 value1, doc (showString "mod"), prt 7 value2])
+    AddVal _ value1 value2 -> prPrec i 5 (concatD [prt 5 value1, doc (showString "+"), prt 6 value2])
+    SubVal _ value1 value2 -> prPrec i 5 (concatD [prt 5 value1, doc (showString "-"), prt 6 value2])
+    NotVal _ value -> prPrec i 4 (concatD [doc (showString "not"), prt 9 value])
+    EqVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "=="), prt 4 value2])
+    NEqVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "!="), prt 4 value2])
+    LessVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "<"), prt 4 value2])
+    GreaterVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString ">"), prt 4 value2])
+    LEqVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString "<="), prt 4 value2])
+    GEqVal _ value1 value2 -> prPrec i 3 (concatD [prt 3 value1, doc (showString ">="), prt 4 value2])
+    AndVal _ value1 value2 -> prPrec i 2 (concatD [prt 2 value1, doc (showString "and"), prt 3 value2])
+    OrVal _ value1 value2 -> prPrec i 2 (concatD [prt 2 value1, doc (showString "or"), prt 3 value2])
+    LamVal _ lambdaargs funbody -> prPrec i 1 (concatD [doc (showString "\\"), prt 0 lambdaargs, doc (showString "=>"), prt 0 funbody])
+    SeqVal _ value1 value2 -> prPrec i 0 (concatD [prt 1 value1, doc (showString "|"), prt 0 value2])
 
-instance Print MatchValueClause where
+instance Print (MatchValueClause a) where
   prt i e = case e of
-    MatchValClause pattern value -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 0 value])
+    MatchValClause _ pattern value -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 0 value])
   prtList _ [] = (concatD [])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
-instance Print AdHocFieldDecl where
+instance Print (AdHocFieldDecl a) where
   prt i e = case e of
-    AdHocFld declaration value -> prPrec i 0 (concatD [prt 0 declaration, doc (showString "="), prt 0 value])
+    AdHocFld _ declaration value -> prPrec i 0 (concatD [prt 0 declaration, doc (showString "="), prt 0 value])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
-instance Print FieldAss where
+instance Print (FieldAss a) where
   prt i e = case e of
-    DataAss id value -> prPrec i 0 (concatD [prt 0 id, doc (showString "="), prt 0 value])
+    DataAss _ id value -> prPrec i 0 (concatD [prt 0 id, doc (showString "="), prt 0 value])
   prtList _ [] = (concatD [])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
-instance Print Statement where
+instance Print (Statement a) where
   prt i e = case e of
-    EmptyStmt -> prPrec i 5 (concatD [doc (showString "{"), doc (showString "}")])
-    StmtBlock statements -> prPrec i 5 (concatD [doc (showString "{"), prt 0 statements, doc (showString "}")])
-    StmtBlockWDecls statements localfundecls -> prPrec i 5 (concatD [doc (showString "{"), prt 0 statements, doc (showString "where"), prt 0 localfundecls, doc (showString "}")])
-    RetStmt -> prPrec i 4 (concatD [doc (showString "return"), doc (showString ";")])
-    RetValStmt value -> prPrec i 4 (concatD [doc (showString "return"), prt 0 value, doc (showString ";")])
-    CntStmt -> prPrec i 4 (concatD [doc (showString "continue"), doc (showString ";")])
-    BrkStmt -> prPrec i 4 (concatD [doc (showString "break"), doc (showString ";")])
-    YieldStmt value -> prPrec i 4 (concatD [doc (showString "yield"), prt 0 value, doc (showString ";")])
-    MatchStmt value matchstatementclauses -> prPrec i 3 (concatD [doc (showString "match"), prt 0 value, doc (showString "{"), prt 0 matchstatementclauses, doc (showString "}")])
-    WhileStmt value statement -> prPrec i 3 (concatD [doc (showString "while"), prt 0 value, prt 5 statement])
-    ForInStmt pattern value statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 value, prt 5 statement])
-    CondStmt conditionalstatement -> prPrec i 3 (concatD [prt 0 conditionalstatement])
-    DconStmt pattern value -> prPrec i 2 (concatD [prt 0 pattern, doc (showString "="), prt 0 value, doc (showString ";")])
-    DeclStmt localobjdecl -> prPrec i 2 (concatD [prt 0 localobjdecl, doc (showString ";")])
-    AssStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString ":="), prt 0 value, doc (showString ";")])
-    AddStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "+="), prt 0 value, doc (showString ";")])
-    SubStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "-="), prt 0 value, doc (showString ";")])
-    MulStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "*="), prt 0 value, doc (showString ";")])
-    DivStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "/="), prt 0 value, doc (showString ";")])
-    PowStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "^="), prt 0 value, doc (showString ";")])
-    CompStmt id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "@="), prt 0 value, doc (showString ";")])
-    QAssStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString ":="), prt 0 value, doc (showString ";")])
-    QAddStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "+="), prt 0 value, doc (showString ";")])
-    QSubStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "-="), prt 0 value, doc (showString ";")])
-    QMulStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "*="), prt 0 value, doc (showString ";")])
-    QDivStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "/="), prt 0 value, doc (showString ";")])
-    QPowStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "^="), prt 0 value, doc (showString ";")])
-    QCompStmt qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "@="), prt 0 value, doc (showString ";")])
-    EvalStmt value -> prPrec i 0 (concatD [doc (showString "eval"), prt 9 value, doc (showString ";")])
+    EmptyStmt _ -> prPrec i 5 (concatD [doc (showString "{"), doc (showString "}")])
+    StmtBlock _ statements -> prPrec i 5 (concatD [doc (showString "{"), prt 0 statements, doc (showString "}")])
+    StmtBlockWDecls _ statements localfundecls -> prPrec i 5 (concatD [doc (showString "{"), prt 0 statements, doc (showString "where"), prt 0 localfundecls, doc (showString "}")])
+    RetStmt _ -> prPrec i 4 (concatD [doc (showString "return"), doc (showString ";")])
+    RetValStmt _ value -> prPrec i 4 (concatD [doc (showString "return"), prt 0 value, doc (showString ";")])
+    CntStmt _ -> prPrec i 4 (concatD [doc (showString "continue"), doc (showString ";")])
+    BrkStmt _ -> prPrec i 4 (concatD [doc (showString "break"), doc (showString ";")])
+    YieldStmt _ value -> prPrec i 4 (concatD [doc (showString "yield"), prt 0 value, doc (showString ";")])
+    MatchStmt _ value matchstatementclauses -> prPrec i 3 (concatD [doc (showString "match"), prt 0 value, doc (showString "{"), prt 0 matchstatementclauses, doc (showString "}")])
+    WhileStmt _ value statement -> prPrec i 3 (concatD [doc (showString "while"), prt 0 value, prt 5 statement])
+    ForInStmt _ pattern value statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 value, prt 5 statement])
+    CondStmt _ conditionalstatement -> prPrec i 3 (concatD [prt 0 conditionalstatement])
+    DconStmt _ pattern value -> prPrec i 2 (concatD [prt 0 pattern, doc (showString "="), prt 0 value, doc (showString ";")])
+    DeclStmt _ localobjdecl -> prPrec i 2 (concatD [prt 0 localobjdecl, doc (showString ";")])
+    AssStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString ":="), prt 0 value, doc (showString ";")])
+    AddStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "+="), prt 0 value, doc (showString ";")])
+    SubStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "-="), prt 0 value, doc (showString ";")])
+    MulStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "*="), prt 0 value, doc (showString ";")])
+    DivStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "/="), prt 0 value, doc (showString ";")])
+    PowStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "^="), prt 0 value, doc (showString ";")])
+    CompStmt _ id value -> prPrec i 1 (concatD [prt 0 id, doc (showString "@="), prt 0 value, doc (showString ";")])
+    QAssStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString ":="), prt 0 value, doc (showString ";")])
+    QAddStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "+="), prt 0 value, doc (showString ";")])
+    QSubStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "-="), prt 0 value, doc (showString ";")])
+    QMulStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "*="), prt 0 value, doc (showString ";")])
+    QDivStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "/="), prt 0 value, doc (showString ";")])
+    QPowStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "^="), prt 0 value, doc (showString ";")])
+    QCompStmt _ qualifier id value -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "@="), prt 0 value, doc (showString ";")])
+    EvalStmt _ value -> prPrec i 0 (concatD [doc (showString "eval"), prt 9 value, doc (showString ";")])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print MatchStatementClause where
+instance Print (MatchStatementClause a) where
   prt i e = case e of
-    MatchStmtClause pattern statement -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 4 statement])
+    MatchStmtClause _ pattern statement -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 4 statement])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print ConditionalStatement where
+instance Print (ConditionalStatement a) where
   prt i e = case e of
-    IfElifStmts ifstatement elseifstatements -> prPrec i 0 (concatD [prt 0 ifstatement, prt 0 elseifstatements])
-    IfElifElseStmts ifstatement elseifstatements elsestatement -> prPrec i 0 (concatD [prt 0 ifstatement, prt 0 elseifstatements, prt 0 elsestatement])
+    IfElifStmts _ ifstatement elseifstatements -> prPrec i 0 (concatD [prt 0 ifstatement, prt 0 elseifstatements])
+    IfElifElseStmts _ ifstatement elseifstatements elsestatement -> prPrec i 0 (concatD [prt 0 ifstatement, prt 0 elseifstatements, prt 0 elsestatement])
 
-instance Print IfStatement where
+instance Print (IfStatement a) where
   prt i e = case e of
-    IfStmt value statement -> prPrec i 0 (concatD [doc (showString "if"), prt 0 value, prt 5 statement])
+    IfStmt _ value statement -> prPrec i 0 (concatD [doc (showString "if"), prt 0 value, prt 5 statement])
 
-instance Print ElseIfStatement where
+instance Print (ElseIfStatement a) where
   prt i e = case e of
-    ElifStmt value statement -> prPrec i 0 (concatD [doc (showString "else"), doc (showString "if"), prt 0 value, prt 5 statement])
+    ElifStmt _ value statement -> prPrec i 0 (concatD [doc (showString "else"), doc (showString "if"), prt 0 value, prt 5 statement])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print ElseStatement where
+instance Print (ElseStatement a) where
   prt i e = case e of
-    ElseStmt statement -> prPrec i 0 (concatD [doc (showString "else"), prt 5 statement])
+    ElseStmt _ statement -> prPrec i 0 (concatD [doc (showString "else"), prt 5 statement])
 
-instance Print VarSpecifier where
+instance Print (VarSpecifier a) where
   prt i e = case e of
-    LocSVar -> prPrec i 0 (concatD [doc (showString "var")])
-    LocSVal -> prPrec i 0 (concatD [doc (showString "val")])
+    LocSVar _ -> prPrec i 0 (concatD [doc (showString "var")])
+    LocSVal _ -> prPrec i 0 (concatD [doc (showString "val")])
 
-instance Print LocalFunDecl where
+instance Print (LocalFunDecl a) where
   prt i e = case e of
-    LocTHint typehint -> prPrec i 0 (concatD [prt 0 typehint])
-    LocFDecl fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
+    LocTHint _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    LocFDecl _ fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
   prtList _ [x] = (concatD [prt 0 x, doc (showString ";")])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
-instance Print LocalObjDecl where
+instance Print (LocalObjDecl a) where
   prt i e = case e of
-    LocVDecl varspecifier declaration -> prPrec i 0 (concatD [prt 0 varspecifier, prt 0 declaration])
+    LocVDecl _ varspecifier declaration -> prPrec i 0 (concatD [prt 0 varspecifier, prt 0 declaration])
 
-instance Print Pattern where
+instance Print (Pattern a) where
   prt i e = case e of
-    PatDecl localobjdecl -> prPrec i 1 (concatD [prt 0 localobjdecl])
-    PatData fieldpatterns -> prPrec i 1 (concatD [doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
-    PatTup tuplepattern -> prPrec i 1 (concatD [doc (showString "("), prt 0 tuplepattern, doc (showString ")")])
-    PatDisc -> prPrec i 1 (concatD [doc (showString "_")])
-    PatCtor uident fieldpatterns -> prPrec i 0 (concatD [prt 0 uident, doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
+    PatDecl _ localobjdecl -> prPrec i 1 (concatD [prt 0 localobjdecl])
+    PatData _ fieldpatterns -> prPrec i 1 (concatD [doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
+    PatTup _ tuplepattern -> prPrec i 1 (concatD [doc (showString "("), prt 0 tuplepattern, doc (showString ")")])
+    PatDisc _ -> prPrec i 1 (concatD [doc (showString "_")])
+    PatCtor _ uident fieldpatterns -> prPrec i 0 (concatD [prt 0 uident, doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
 
-instance Print TuplePattern where
+instance Print (TuplePattern a) where
   prt i e = case e of
-    PatTupList pattern tuplepattern -> prPrec i 0 (concatD [prt 0 pattern, doc (showString ","), prt 0 tuplepattern])
-    PatTupTail pattern1 pattern2 -> prPrec i 0 (concatD [prt 0 pattern1, doc (showString ","), prt 0 pattern2])
+    PatTupList _ pattern tuplepattern -> prPrec i 0 (concatD [prt 0 pattern, doc (showString ","), prt 0 tuplepattern])
+    PatTupTail _ pattern1 pattern2 -> prPrec i 0 (concatD [prt 0 pattern1, doc (showString ","), prt 0 pattern2])
 
-instance Print FieldPattern where
+instance Print (FieldPattern a) where
   prt i e = case e of
-    PatFld id pattern -> prPrec i 0 (concatD [prt 0 id, doc (showString ":"), prt 0 pattern])
+    PatFld _ id pattern -> prPrec i 0 (concatD [prt 0 id, doc (showString ":"), prt 0 pattern])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
-instance Print TypeSignature where
+instance Print (TypeSignature a) where
   prt i e = case e of
-    TSig uident typearguments -> prPrec i 0 (concatD [prt 0 uident, prt 0 typearguments])
+    TSig _ uident typearguments -> prPrec i 0 (concatD [prt 0 uident, prt 0 typearguments])
 
-instance Print TypeDecl where
+instance Print (TypeDecl a) where
   prt i e = case e of
-    ValTDecl typesignature typebody -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
-    RefTDecl typesignature typebody -> prPrec i 0 (concatD [doc (showString "ref"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
-    ValTUDecl typesignature typevariantdecls -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typevariantdecls, doc (showString "}")])
+    ValTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
+    RefTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "ref"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
+    ValTUDecl _ typesignature typevariantdecls -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typevariantdecls, doc (showString "}")])
 
-instance Print TypeArgument where
+instance Print (TypeArgument a) where
   prt i e = case e of
-    TArg id -> prPrec i 0 (concatD [prt 0 id])
+    TArg _ id -> prPrec i 0 (concatD [prt 0 id])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print TypeVariantDecl where
+instance Print (TypeVariantDecl a) where
   prt i e = case e of
-    TVarDecl uident typebody -> prPrec i 0 (concatD [doc (showString "variant"), prt 0 uident, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
+    TVarDecl _ uident typebody -> prPrec i 0 (concatD [doc (showString "variant"), prt 0 uident, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
   prtList _ [x] = (concatD [prt 0 x, doc (showString ";")])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
-instance Print TypeBody where
+instance Print (TypeBody a) where
   prt i e = case e of
-    DataTBody fielddecls memberdecls -> prPrec i 0 (concatD [doc (showString "data"), doc (showString "="), doc (showString "{"), prt 0 fielddecls, doc (showString "}"), prt 0 memberdecls])
-    TBody memberdecls -> prPrec i 0 (concatD [prt 0 memberdecls])
+    DataTBody _ fielddecls memberdecls -> prPrec i 0 (concatD [doc (showString "data"), doc (showString "="), doc (showString "{"), prt 0 fielddecls, doc (showString "}"), prt 0 memberdecls])
+    TBody _ memberdecls -> prPrec i 0 (concatD [prt 0 memberdecls])
 
-instance Print FieldDecl where
+instance Print (FieldDecl a) where
   prt i e = case e of
-    TFldDecl typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    TFldDecl _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
   prtList _ [x] = (concatD [prt 0 x, doc (showString ";")])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
-instance Print MemberDecl where
+instance Print (MemberDecl a) where
   prt i e = case e of
-    TMemTHint typehint -> prPrec i 0 (concatD [prt 0 typehint])
-    TMemFDecl fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
+    TMemTHint _ typehint -> prPrec i 0 (concatD [prt 0 typehint])
+    TMemFDecl _ fundecl -> prPrec i 0 (concatD [prt 0 fundecl])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ";"), prt 0 xs])
 
