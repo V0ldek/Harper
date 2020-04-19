@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5aeb18fe07d065fe8b304f3f49043c51a0fd7dbae660d4008bcacd275a0f2334
+-- hash: 09cf3754600d5ab6098162b5082a65e12f410b939bd0ab8fc162dfe421d823c0
 
 name:           Harper
 version:        0.1.0.0
@@ -32,9 +32,9 @@ library
       Harper.Engine
       Harper.Engine.Conditionals
       Harper.Engine.Error
+      Harper.Engine.Expressions
       Harper.Engine.Object
       Harper.Engine.Output
-      Harper.Engine.Values
       Harper.Lexer
       Harper.Parser
       Harper.Printer

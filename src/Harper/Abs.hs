@@ -29,13 +29,27 @@ data TypeHint a = THint a Ident (TypeExpr a)
 instance Functor TypeHint where
     fmap f x = case x of
         THint a ident typeexpr -> THint (f a) ident (fmap f typeexpr)
-data Declaration a = Decl a Ident | DeclWHint a (TypeHint a)
+data TypeExpr a
+    = TVar a Ident
+    | TCtor a UIdent
+    | TPur a (TypePurity a)
+    | TUnit a
+    | TTup a (TupleType a)
+    | TAdHoc a [FieldTypeExpr a]
+    | TApp a (TypeExpr a) (TypeExpr a)
+    | TFun a (TypeExpr a) (TypeExpr a)
   deriving (Eq, Ord, Show, Read)
 
-instance Functor Declaration where
+instance Functor TypeExpr where
     fmap f x = case x of
-        Decl a ident -> Decl (f a) ident
-        DeclWHint a typehint -> DeclWHint (f a) (fmap f typehint)
+        TVar a ident -> TVar (f a) ident
+        TCtor a uident -> TCtor (f a) uident
+        TPur a typepurity -> TPur (f a) (fmap f typepurity)
+        TUnit a -> TUnit (f a)
+        TTup a tupletype -> TTup (f a) (fmap f tupletype)
+        TAdHoc a fieldtypeexprs -> TAdHoc (f a) (map (fmap f) fieldtypeexprs)
+        TApp a typeexpr1 typeexpr2 -> TApp (f a) (fmap f typeexpr1) (fmap f typeexpr2)
+        TFun a typeexpr1 typeexpr2 -> TFun (f a) (fmap f typeexpr1) (fmap f typeexpr2)
 data TupleType a
     = TTupList a (TypeExpr a) (TupleType a)
     | TTupTail a (TypeExpr a) (TypeExpr a)
@@ -58,27 +72,6 @@ data FieldTypeExpr a = TFld a (TypeHint a)
 instance Functor FieldTypeExpr where
     fmap f x = case x of
         TFld a typehint -> TFld (f a) (fmap f typehint)
-data TypeExpr a
-    = TVar a Ident
-    | TCtor a UIdent
-    | TPur a (TypePurity a)
-    | TUnit a
-    | TTup a (TupleType a)
-    | TAdHoc a [FieldTypeExpr a]
-    | TApp a (TypeExpr a) (TypeExpr a)
-    | TFun a (TypeExpr a) (TypeExpr a)
-  deriving (Eq, Ord, Show, Read)
-
-instance Functor TypeExpr where
-    fmap f x = case x of
-        TVar a ident -> TVar (f a) ident
-        TCtor a uident -> TCtor (f a) uident
-        TPur a typepurity -> TPur (f a) (fmap f typepurity)
-        TUnit a -> TUnit (f a)
-        TTup a tupletype -> TTup (f a) (fmap f tupletype)
-        TAdHoc a fieldtypeexprs -> TAdHoc (f a) (map (fmap f) fieldtypeexprs)
-        TApp a typeexpr1 typeexpr2 -> TApp (f a) (fmap f typeexpr1) (fmap f typeexpr2)
-        TFun a typeexpr1 typeexpr2 -> TFun (f a) (fmap f typeexpr1) (fmap f typeexpr2)
 data FunDecl a = FDecl a Ident [FunArg a] (FunBody a)
   deriving (Eq, Ord, Show, Read)
 
@@ -97,12 +90,13 @@ data LambdaArg a = LamArg a (Pattern a)
 instance Functor LambdaArg where
     fmap f x = case x of
         LamArg a pattern -> LamArg (f a) (fmap f pattern)
-data FunBody a = FValBody a (Value a) | FStmtBody a (Statement a)
+data FunBody a
+    = FExprBody a (Expression a) | FStmtBody a (Statement a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor FunBody where
     fmap f x = case x of
-        FValBody a value -> FValBody (f a) (fmap f value)
+        FExprBody a expression -> FExprBody (f a) (fmap f expression)
         FStmtBody a statement -> FStmtBody (f a) (fmap f statement)
 data BoolLiteral a = BTrue a | BFalse a
   deriving (Eq, Ord, Show, Read)
@@ -112,7 +106,8 @@ instance Functor BoolLiteral where
         BTrue a -> BTrue (f a)
         BFalse a -> BFalse (f a)
 data Literal a
-    = IntLit a Integer
+    = UnitLit a
+    | IntLit a Integer
     | CharLit a Char
     | StrLit a String
     | BoolLit a (BoolLiteral a)
@@ -120,25 +115,16 @@ data Literal a
 
 instance Functor Literal where
     fmap f x = case x of
+        UnitLit a -> UnitLit (f a)
         IntLit a integer -> IntLit (f a) integer
         CharLit a char -> CharLit (f a) char
         StrLit a string -> StrLit (f a) string
         BoolLit a boolliteral -> BoolLit (f a) (fmap f boolliteral)
-data TupleValue a
-    = TupValList a (Value a) (TupleValue a)
-    | TupValTail a (Value a) (Value a)
-  deriving (Eq, Ord, Show, Read)
-
-instance Functor TupleValue where
-    fmap f x = case x of
-        TupValList a value tuplevalue -> TupValList (f a) (fmap f value) (fmap f tuplevalue)
-        TupValTail a value1 value2 -> TupValTail (f a) (fmap f value1) (fmap f value2)
 data Qualifier a
     = Qual a Ident
     | Quals a (Qualifier a) (Qualifier a)
     | ThisQual a
     | DataQual a
-    | NewQual a
   deriving (Eq, Ord, Show, Read)
 
 instance Functor Qualifier where
@@ -147,118 +133,121 @@ instance Functor Qualifier where
         Quals a qualifier1 qualifier2 -> Quals (f a) (fmap f qualifier1) (fmap f qualifier2)
         ThisQual a -> ThisQual (f a)
         DataQual a -> DataQual (f a)
-        NewQual a -> NewQual (f a)
-data Value a
-    = ThisVal a
-    | AdHocVal a [AdHocFieldDecl a]
-    | VCtorVal a UIdent [FieldAss a]
-    | TupVal a (TupleValue a)
-    | LitVal a (Literal a)
-    | ObjVal a Ident
-    | CtorVal a UIdent
-    | QObjVal a (Qualifier a) Ident
-    | UnitVal a
-    | MatchVal a (Value a) [MatchValueClause a]
-    | AppVal a (Value a) (Value a)
-    | CompVal a (Value a) (Value a)
-    | PowVal a (Value a) (Value a)
-    | MulVal a (Value a) (Value a)
-    | DivVal a (Value a) (Value a)
-    | ModVal a (Value a) (Value a)
-    | AddVal a (Value a) (Value a)
-    | SubVal a (Value a) (Value a)
-    | NotVal a (Value a)
-    | EqVal a (Value a) (Value a)
-    | NEqVal a (Value a) (Value a)
-    | LessVal a (Value a) (Value a)
-    | GreaterVal a (Value a) (Value a)
-    | LEqVal a (Value a) (Value a)
-    | GEqVal a (Value a) (Value a)
-    | AndVal a (Value a) (Value a)
-    | OrVal a (Value a) (Value a)
-    | LamVal a [LambdaArg a] (FunBody a)
-    | SeqVal a (Value a) (Value a)
+data Expression a
+    = ThisExpr a
+    | AdHocExpr a [AdHocFieldDecl a]
+    | VCtorExpr a UIdent [FieldAss a]
+    | TupExpr a (TupleExpression a)
+    | LitExpr a (Literal a)
+    | ObjExpr a Ident
+    | CtorExpr a UIdent
+    | QObjExpr a (Qualifier a) Ident
+    | MatchExpr a (Expression a) [MatchExpressionClause a]
+    | AppExpr a (Expression a) (Expression a)
+    | CompExpr a (Expression a) (Expression a)
+    | PowExpr a (Expression a) (Expression a)
+    | MulExpr a (Expression a) (Expression a)
+    | DivExpr a (Expression a) (Expression a)
+    | ModExpr a (Expression a) (Expression a)
+    | AddExpr a (Expression a) (Expression a)
+    | SubExpr a (Expression a) (Expression a)
+    | NotExpr a (Expression a)
+    | NegExpr a (Expression a)
+    | EqExpr a (Expression a) (Expression a)
+    | NEqExpr a (Expression a) (Expression a)
+    | LtExpr a (Expression a) (Expression a)
+    | GtExpr a (Expression a) (Expression a)
+    | LEqExpr a (Expression a) (Expression a)
+    | GEqExpr a (Expression a) (Expression a)
+    | AndExpr a (Expression a) (Expression a)
+    | OrExpr a (Expression a) (Expression a)
+    | SeqExpr a (Expression a) (Expression a)
+    | LamExpr a [LambdaArg a] (FunBody a)
   deriving (Eq, Ord, Show, Read)
 
-instance Functor Value where
+instance Functor Expression where
     fmap f x = case x of
-        ThisVal a -> ThisVal (f a)
-        AdHocVal a adhocfielddecls -> AdHocVal (f a) (map (fmap f) adhocfielddecls)
-        VCtorVal a uident fieldasss -> VCtorVal (f a) uident (map (fmap f) fieldasss)
-        TupVal a tuplevalue -> TupVal (f a) (fmap f tuplevalue)
-        LitVal a literal -> LitVal (f a) (fmap f literal)
-        ObjVal a ident -> ObjVal (f a) ident
-        CtorVal a uident -> CtorVal (f a) uident
-        QObjVal a qualifier ident -> QObjVal (f a) (fmap f qualifier) ident
-        UnitVal a -> UnitVal (f a)
-        MatchVal a value matchvalueclauses -> MatchVal (f a) (fmap f value) (map (fmap f) matchvalueclauses)
-        AppVal a value1 value2 -> AppVal (f a) (fmap f value1) (fmap f value2)
-        CompVal a value1 value2 -> CompVal (f a) (fmap f value1) (fmap f value2)
-        PowVal a value1 value2 -> PowVal (f a) (fmap f value1) (fmap f value2)
-        MulVal a value1 value2 -> MulVal (f a) (fmap f value1) (fmap f value2)
-        DivVal a value1 value2 -> DivVal (f a) (fmap f value1) (fmap f value2)
-        ModVal a value1 value2 -> ModVal (f a) (fmap f value1) (fmap f value2)
-        AddVal a value1 value2 -> AddVal (f a) (fmap f value1) (fmap f value2)
-        SubVal a value1 value2 -> SubVal (f a) (fmap f value1) (fmap f value2)
-        NotVal a value -> NotVal (f a) (fmap f value)
-        EqVal a value1 value2 -> EqVal (f a) (fmap f value1) (fmap f value2)
-        NEqVal a value1 value2 -> NEqVal (f a) (fmap f value1) (fmap f value2)
-        LessVal a value1 value2 -> LessVal (f a) (fmap f value1) (fmap f value2)
-        GreaterVal a value1 value2 -> GreaterVal (f a) (fmap f value1) (fmap f value2)
-        LEqVal a value1 value2 -> LEqVal (f a) (fmap f value1) (fmap f value2)
-        GEqVal a value1 value2 -> GEqVal (f a) (fmap f value1) (fmap f value2)
-        AndVal a value1 value2 -> AndVal (f a) (fmap f value1) (fmap f value2)
-        OrVal a value1 value2 -> OrVal (f a) (fmap f value1) (fmap f value2)
-        LamVal a lambdaargs funbody -> LamVal (f a) (map (fmap f) lambdaargs) (fmap f funbody)
-        SeqVal a value1 value2 -> SeqVal (f a) (fmap f value1) (fmap f value2)
-data MatchValueClause a = MatchValClause a (Pattern a) (Value a)
+        ThisExpr a -> ThisExpr (f a)
+        AdHocExpr a adhocfielddecls -> AdHocExpr (f a) (map (fmap f) adhocfielddecls)
+        VCtorExpr a uident fieldasss -> VCtorExpr (f a) uident (map (fmap f) fieldasss)
+        TupExpr a tupleexpression -> TupExpr (f a) (fmap f tupleexpression)
+        LitExpr a literal -> LitExpr (f a) (fmap f literal)
+        ObjExpr a ident -> ObjExpr (f a) ident
+        CtorExpr a uident -> CtorExpr (f a) uident
+        QObjExpr a qualifier ident -> QObjExpr (f a) (fmap f qualifier) ident
+        MatchExpr a expression matchexpressionclauses -> MatchExpr (f a) (fmap f expression) (map (fmap f) matchexpressionclauses)
+        AppExpr a expression1 expression2 -> AppExpr (f a) (fmap f expression1) (fmap f expression2)
+        CompExpr a expression1 expression2 -> CompExpr (f a) (fmap f expression1) (fmap f expression2)
+        PowExpr a expression1 expression2 -> PowExpr (f a) (fmap f expression1) (fmap f expression2)
+        MulExpr a expression1 expression2 -> MulExpr (f a) (fmap f expression1) (fmap f expression2)
+        DivExpr a expression1 expression2 -> DivExpr (f a) (fmap f expression1) (fmap f expression2)
+        ModExpr a expression1 expression2 -> ModExpr (f a) (fmap f expression1) (fmap f expression2)
+        AddExpr a expression1 expression2 -> AddExpr (f a) (fmap f expression1) (fmap f expression2)
+        SubExpr a expression1 expression2 -> SubExpr (f a) (fmap f expression1) (fmap f expression2)
+        NotExpr a expression -> NotExpr (f a) (fmap f expression)
+        NegExpr a expression -> NegExpr (f a) (fmap f expression)
+        EqExpr a expression1 expression2 -> EqExpr (f a) (fmap f expression1) (fmap f expression2)
+        NEqExpr a expression1 expression2 -> NEqExpr (f a) (fmap f expression1) (fmap f expression2)
+        LtExpr a expression1 expression2 -> LtExpr (f a) (fmap f expression1) (fmap f expression2)
+        GtExpr a expression1 expression2 -> GtExpr (f a) (fmap f expression1) (fmap f expression2)
+        LEqExpr a expression1 expression2 -> LEqExpr (f a) (fmap f expression1) (fmap f expression2)
+        GEqExpr a expression1 expression2 -> GEqExpr (f a) (fmap f expression1) (fmap f expression2)
+        AndExpr a expression1 expression2 -> AndExpr (f a) (fmap f expression1) (fmap f expression2)
+        OrExpr a expression1 expression2 -> OrExpr (f a) (fmap f expression1) (fmap f expression2)
+        SeqExpr a expression1 expression2 -> SeqExpr (f a) (fmap f expression1) (fmap f expression2)
+        LamExpr a lambdaargs funbody -> LamExpr (f a) (map (fmap f) lambdaargs) (fmap f funbody)
+data TupleExpression a
+    = TupExprList a (Expression a) (TupleExpression a)
+    | TupExprTail a (Expression a) (Expression a)
   deriving (Eq, Ord, Show, Read)
 
-instance Functor MatchValueClause where
+instance Functor TupleExpression where
     fmap f x = case x of
-        MatchValClause a pattern value -> MatchValClause (f a) (fmap f pattern) (fmap f value)
-data AdHocFieldDecl a = AdHocFld a (Declaration a) (Value a)
+        TupExprList a expression tupleexpression -> TupExprList (f a) (fmap f expression) (fmap f tupleexpression)
+        TupExprTail a expression1 expression2 -> TupExprTail (f a) (fmap f expression1) (fmap f expression2)
+data MatchExpressionClause a
+    = MatchExprClause a (Pattern a) (Expression a)
   deriving (Eq, Ord, Show, Read)
 
-instance Functor AdHocFieldDecl where
+instance Functor MatchExpressionClause where
     fmap f x = case x of
-        AdHocFld a declaration value -> AdHocFld (f a) (fmap f declaration) (fmap f value)
-data FieldAss a = DataAss a Ident (Value a)
+        MatchExprClause a pattern expression -> MatchExprClause (f a) (fmap f pattern) (fmap f expression)
+data FieldAss a = DataAss a Ident (Expression a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor FieldAss where
     fmap f x = case x of
-        DataAss a ident value -> DataAss (f a) ident (fmap f value)
+        DataAss a ident expression -> DataAss (f a) ident (fmap f expression)
 data Statement a
     = EmptyStmt a
     | StmtBlock a [Statement a]
     | StmtBlockWDecls a [Statement a] [LocalFunDecl a]
     | RetStmt a
-    | RetValStmt a (Value a)
+    | RetExprStmt a (Expression a)
     | CntStmt a
     | BrkStmt a
-    | YieldStmt a (Value a)
-    | MatchStmt a (Value a) [MatchStatementClause a]
-    | WhileStmt a (Value a) (Statement a)
-    | ForInStmt a (Pattern a) (Value a) (Statement a)
+    | YieldStmt a (Expression a)
+    | MatchStmt a (Expression a) [MatchStatementClause a]
+    | WhileStmt a (Expression a) (Statement a)
+    | ForInStmt a (Pattern a) (Expression a) (Statement a)
     | CondStmt a (ConditionalStatement a)
-    | DconStmt a (Pattern a) (Value a)
+    | DconStmt a (Pattern a) (Expression a)
     | DeclStmt a (LocalObjDecl a)
-    | AssStmt a Ident (Value a)
-    | AddStmt a Ident (Value a)
-    | SubStmt a Ident (Value a)
-    | MulStmt a Ident (Value a)
-    | DivStmt a Ident (Value a)
-    | PowStmt a Ident (Value a)
-    | CompStmt a Ident (Value a)
-    | QAssStmt a (Qualifier a) Ident (Value a)
-    | QAddStmt a (Qualifier a) Ident (Value a)
-    | QSubStmt a (Qualifier a) Ident (Value a)
-    | QMulStmt a (Qualifier a) Ident (Value a)
-    | QDivStmt a (Qualifier a) Ident (Value a)
-    | QPowStmt a (Qualifier a) Ident (Value a)
-    | QCompStmt a (Qualifier a) Ident (Value a)
-    | EvalStmt a (Value a)
+    | AssStmt a Ident (Expression a)
+    | AddStmt a Ident (Expression a)
+    | SubStmt a Ident (Expression a)
+    | MulStmt a Ident (Expression a)
+    | DivStmt a Ident (Expression a)
+    | PowStmt a Ident (Expression a)
+    | CompStmt a Ident (Expression a)
+    | QAssStmt a (Qualifier a) Ident (Expression a)
+    | QAddStmt a (Qualifier a) Ident (Expression a)
+    | QSubStmt a (Qualifier a) Ident (Expression a)
+    | QMulStmt a (Qualifier a) Ident (Expression a)
+    | QDivStmt a (Qualifier a) Ident (Expression a)
+    | QPowStmt a (Qualifier a) Ident (Expression a)
+    | QCompStmt a (Qualifier a) Ident (Expression a)
+    | EvalStmt a (Expression a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor Statement where
@@ -267,31 +256,31 @@ instance Functor Statement where
         StmtBlock a statements -> StmtBlock (f a) (map (fmap f) statements)
         StmtBlockWDecls a statements localfundecls -> StmtBlockWDecls (f a) (map (fmap f) statements) (map (fmap f) localfundecls)
         RetStmt a -> RetStmt (f a)
-        RetValStmt a value -> RetValStmt (f a) (fmap f value)
+        RetExprStmt a expression -> RetExprStmt (f a) (fmap f expression)
         CntStmt a -> CntStmt (f a)
         BrkStmt a -> BrkStmt (f a)
-        YieldStmt a value -> YieldStmt (f a) (fmap f value)
-        MatchStmt a value matchstatementclauses -> MatchStmt (f a) (fmap f value) (map (fmap f) matchstatementclauses)
-        WhileStmt a value statement -> WhileStmt (f a) (fmap f value) (fmap f statement)
-        ForInStmt a pattern value statement -> ForInStmt (f a) (fmap f pattern) (fmap f value) (fmap f statement)
+        YieldStmt a expression -> YieldStmt (f a) (fmap f expression)
+        MatchStmt a expression matchstatementclauses -> MatchStmt (f a) (fmap f expression) (map (fmap f) matchstatementclauses)
+        WhileStmt a expression statement -> WhileStmt (f a) (fmap f expression) (fmap f statement)
+        ForInStmt a pattern expression statement -> ForInStmt (f a) (fmap f pattern) (fmap f expression) (fmap f statement)
         CondStmt a conditionalstatement -> CondStmt (f a) (fmap f conditionalstatement)
-        DconStmt a pattern value -> DconStmt (f a) (fmap f pattern) (fmap f value)
+        DconStmt a pattern expression -> DconStmt (f a) (fmap f pattern) (fmap f expression)
         DeclStmt a localobjdecl -> DeclStmt (f a) (fmap f localobjdecl)
-        AssStmt a ident value -> AssStmt (f a) ident (fmap f value)
-        AddStmt a ident value -> AddStmt (f a) ident (fmap f value)
-        SubStmt a ident value -> SubStmt (f a) ident (fmap f value)
-        MulStmt a ident value -> MulStmt (f a) ident (fmap f value)
-        DivStmt a ident value -> DivStmt (f a) ident (fmap f value)
-        PowStmt a ident value -> PowStmt (f a) ident (fmap f value)
-        CompStmt a ident value -> CompStmt (f a) ident (fmap f value)
-        QAssStmt a qualifier ident value -> QAssStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QAddStmt a qualifier ident value -> QAddStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QSubStmt a qualifier ident value -> QSubStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QMulStmt a qualifier ident value -> QMulStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QDivStmt a qualifier ident value -> QDivStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QPowStmt a qualifier ident value -> QPowStmt (f a) (fmap f qualifier) ident (fmap f value)
-        QCompStmt a qualifier ident value -> QCompStmt (f a) (fmap f qualifier) ident (fmap f value)
-        EvalStmt a value -> EvalStmt (f a) (fmap f value)
+        AssStmt a ident expression -> AssStmt (f a) ident (fmap f expression)
+        AddStmt a ident expression -> AddStmt (f a) ident (fmap f expression)
+        SubStmt a ident expression -> SubStmt (f a) ident (fmap f expression)
+        MulStmt a ident expression -> MulStmt (f a) ident (fmap f expression)
+        DivStmt a ident expression -> DivStmt (f a) ident (fmap f expression)
+        PowStmt a ident expression -> PowStmt (f a) ident (fmap f expression)
+        CompStmt a ident expression -> CompStmt (f a) ident (fmap f expression)
+        QAssStmt a qualifier ident expression -> QAssStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QAddStmt a qualifier ident expression -> QAddStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QSubStmt a qualifier ident expression -> QSubStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QMulStmt a qualifier ident expression -> QMulStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QDivStmt a qualifier ident expression -> QDivStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QPowStmt a qualifier ident expression -> QPowStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        QCompStmt a qualifier ident expression -> QCompStmt (f a) (fmap f qualifier) ident (fmap f expression)
+        EvalStmt a expression -> EvalStmt (f a) (fmap f expression)
 data MatchStatementClause a
     = MatchStmtClause a (Pattern a) (Statement a)
   deriving (Eq, Ord, Show, Read)
@@ -308,47 +297,27 @@ instance Functor ConditionalStatement where
     fmap f x = case x of
         IfElifStmts a ifstatement elseifstatements -> IfElifStmts (f a) (fmap f ifstatement) (map (fmap f) elseifstatements)
         IfElifElseStmts a ifstatement elseifstatements elsestatement -> IfElifElseStmts (f a) (fmap f ifstatement) (map (fmap f) elseifstatements) (fmap f elsestatement)
-data IfStatement a = IfStmt a (Value a) (Statement a)
+data IfStatement a = IfStmt a (Expression a) (Statement a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor IfStatement where
     fmap f x = case x of
-        IfStmt a value statement -> IfStmt (f a) (fmap f value) (fmap f statement)
-data ElseIfStatement a = ElifStmt a (Value a) (Statement a)
+        IfStmt a expression statement -> IfStmt (f a) (fmap f expression) (fmap f statement)
+data ElseIfStatement a = ElifStmt a (Expression a) (Statement a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor ElseIfStatement where
     fmap f x = case x of
-        ElifStmt a value statement -> ElifStmt (f a) (fmap f value) (fmap f statement)
+        ElifStmt a expression statement -> ElifStmt (f a) (fmap f expression) (fmap f statement)
 data ElseStatement a = ElseStmt a (Statement a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor ElseStatement where
     fmap f x = case x of
         ElseStmt a statement -> ElseStmt (f a) (fmap f statement)
-data VarSpecifier a = LocSVar a | LocSVal a
-  deriving (Eq, Ord, Show, Read)
-
-instance Functor VarSpecifier where
-    fmap f x = case x of
-        LocSVar a -> LocSVar (f a)
-        LocSVal a -> LocSVal (f a)
-data LocalFunDecl a
-    = LocTHint a (TypeHint a) | LocFDecl a (FunDecl a)
-  deriving (Eq, Ord, Show, Read)
-
-instance Functor LocalFunDecl where
-    fmap f x = case x of
-        LocTHint a typehint -> LocTHint (f a) (fmap f typehint)
-        LocFDecl a fundecl -> LocFDecl (f a) (fmap f fundecl)
-data LocalObjDecl a = LocVDecl a (VarSpecifier a) (Declaration a)
-  deriving (Eq, Ord, Show, Read)
-
-instance Functor LocalObjDecl where
-    fmap f x = case x of
-        LocVDecl a varspecifier declaration -> LocVDecl (f a) (fmap f varspecifier) (fmap f declaration)
 data Pattern a
-    = PatDecl a (LocalObjDecl a)
+    = PatLit a (Literal a)
+    | PatDecl a (LocalObjDecl a)
     | PatData a [FieldPattern a]
     | PatTup a (TuplePattern a)
     | PatDisc a
@@ -357,6 +326,7 @@ data Pattern a
 
 instance Functor Pattern where
     fmap f x = case x of
+        PatLit a literal -> PatLit (f a) (fmap f literal)
         PatDecl a localobjdecl -> PatDecl (f a) (fmap f localobjdecl)
         PatData a fieldpatterns -> PatData (f a) (map (fmap f) fieldpatterns)
         PatTup a tuplepattern -> PatTup (f a) (fmap f tuplepattern)
@@ -377,6 +347,35 @@ data FieldPattern a = PatFld a Ident (Pattern a)
 instance Functor FieldPattern where
     fmap f x = case x of
         PatFld a ident pattern -> PatFld (f a) ident (fmap f pattern)
+data Declaration a = Decl a Ident | DeclWHint a (TypeHint a)
+  deriving (Eq, Ord, Show, Read)
+
+instance Functor Declaration where
+    fmap f x = case x of
+        Decl a ident -> Decl (f a) ident
+        DeclWHint a typehint -> DeclWHint (f a) (fmap f typehint)
+data AdHocFieldDecl a = AdHocFld a (Declaration a) (Expression a)
+  deriving (Eq, Ord, Show, Read)
+
+instance Functor AdHocFieldDecl where
+    fmap f x = case x of
+        AdHocFld a declaration expression -> AdHocFld (f a) (fmap f declaration) (fmap f expression)
+data LocalFunDecl a
+    = LocTHint a (TypeHint a) | LocFDecl a (FunDecl a)
+  deriving (Eq, Ord, Show, Read)
+
+instance Functor LocalFunDecl where
+    fmap f x = case x of
+        LocTHint a typehint -> LocTHint (f a) (fmap f typehint)
+        LocFDecl a fundecl -> LocFDecl (f a) (fmap f fundecl)
+data LocalObjDecl a
+    = LocVarDecl a (Declaration a) | LocValDecl a (Declaration a)
+  deriving (Eq, Ord, Show, Read)
+
+instance Functor LocalObjDecl where
+    fmap f x = case x of
+        LocVarDecl a declaration -> LocVarDecl (f a) (fmap f declaration)
+        LocValDecl a declaration -> LocValDecl (f a) (fmap f declaration)
 data TypeSignature a = TSig a UIdent [TypeArgument a]
   deriving (Eq, Ord, Show, Read)
 
@@ -384,16 +383,16 @@ instance Functor TypeSignature where
     fmap f x = case x of
         TSig a uident typearguments -> TSig (f a) uident (map (fmap f) typearguments)
 data TypeDecl a
-    = ValTDecl a (TypeSignature a) (TypeBody a)
+    = ExprTDecl a (TypeSignature a) (TypeBody a)
     | RefTDecl a (TypeSignature a) (TypeBody a)
-    | ValTUDecl a (TypeSignature a) [TypeVariantDecl a]
+    | ExprTUDecl a (TypeSignature a) [TypeVariantDecl a]
   deriving (Eq, Ord, Show, Read)
 
 instance Functor TypeDecl where
     fmap f x = case x of
-        ValTDecl a typesignature typebody -> ValTDecl (f a) (fmap f typesignature) (fmap f typebody)
+        ExprTDecl a typesignature typebody -> ExprTDecl (f a) (fmap f typesignature) (fmap f typebody)
         RefTDecl a typesignature typebody -> RefTDecl (f a) (fmap f typesignature) (fmap f typebody)
-        ValTUDecl a typesignature typevariantdecls -> ValTUDecl (f a) (fmap f typesignature) (map (fmap f) typevariantdecls)
+        ExprTUDecl a typesignature typevariantdecls -> ExprTUDecl (f a) (fmap f typesignature) (map (fmap f) typevariantdecls)
 data TypeArgument a = TArg a Ident
   deriving (Eq, Ord, Show, Read)
 
