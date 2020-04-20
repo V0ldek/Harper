@@ -1,9 +1,14 @@
 module Harper.Engine.Error where
+import           Control.Monad.Trans
 
 import           Harper.Abs
 import           Harper.Abs.Pos
+import           Harper.Engine.Core
 import           Harper.Engine.Output
 import           Harper.Printer
+
+raise :: HarperOutput a -> Interpreter a
+raise = lift . lift
 
 runtimeErr :: HarperOutput a
 runtimeErr = fail "runtime error."
@@ -119,5 +124,39 @@ divByZero e ctx = do
         . showsPrt e
         . ("` evaluated to zero causing a division error." ++)
         )
+        ctx
+    runtimeErr
+
+assToValue :: Ident -> Statement Pos -> HarperOutput a
+assToValue i ctx = do
+    outputErr
+        ( ("cannot assign to an immutable variable `" ++)
+        . showsPrt i
+        . ("`." ++)
+        )
+        ctx
+    runtimeErr
+
+invAss :: String -> Ident -> Statement Pos -> HarperOutput a
+invAss t i ctx = do
+    outputErr
+        ( ("cannot assign to `" ++)
+        . showsPrt i
+        . ("`, which is a value of type '" ++)
+        . (t ++)
+        . ("'." ++)
+        )
+        ctx
+    runtimeErr
+
+undeclaredIdent :: (Print p, Position p) => Ident -> p -> HarperOutput a
+undeclaredIdent i ctx = do
+    outputErr (("undeclared identifier `" ++) . showsPrt i . ("`." ++)) ctx
+    runtimeErr
+
+unassVar :: (Print p, Position p) => Ident -> p -> HarperOutput a
+unassVar i ctx = do
+    outputErr
+        (("variable `" ++) . showsPrt i . ("` used before it was assigned." ++))
         ctx
     runtimeErr

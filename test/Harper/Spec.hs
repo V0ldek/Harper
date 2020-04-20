@@ -6,7 +6,7 @@ import           Data.Char
 import           Harper.Lexer
 import           Harper.Parser
 import           Harper.Engine
-import           Harper.Engine.Object
+import           Harper.Engine.Core
 import           Harper.Printer
 import           ErrM
 import           OutputM
@@ -241,6 +241,166 @@ issue4_unaryMinus = TProg "\
 \main = (-7) * (-17);\
 \" (Out [] (Ok $ PInt 119))
 
+issue5_lam = TProg
+    "\
+\fun = {\n\
+\  f = (\\b c x => b + c - x);\n\
+\  return f;\n\
+\};\n\
+\\n\
+\main = fun 1 2 3 ;\
+\"
+    (Out [] (Ok $ PInt 0))
+
+issue5_lam2 = TProg
+    "\
+\main = {\n\
+\  var x = 42;\n\
+\  var y = 3;\n\
+\  var z = 17;\n\
+\  var a = 7;\n\
+\  f = \\ b c x => a * b + c - x + y * z;\n\
+\  x += 1;\n\
+\  y -= 50;\n\
+\  z /= 4;\n\
+\  a ^= 2;\n\
+\  return f 1 2 3;\n\
+\  } ;\n\
+\"
+    (Out [] (Ok $ PInt 57))
+
+issue5_lam3 = TProg
+    "\
+\fun x y = {\n\
+\  x = x * y;\n\
+\  return (\\n y => x + n + y);\n\
+\};\n\
+\\n\
+\main = fun 7 13 17 42;\n\
+\"
+    (Out [] (Ok $ PInt 150))
+
+issue5_while = TProg
+    "\
+\fac n = {\n\
+\  var result = 1;\n\
+\  var i = 0;\n\
+\  while i < n {\n\
+\    i += 1;\n\
+\    result *= i;\n\
+\  }\n\
+\  return result;\n\
+\};\n\
+\\n\
+\main = fac 42;\n\
+\"
+    (Out [] (Ok $ PInt 1405006117752879898543142606244511569936384000000000))
+
+issue5_ass = TProg
+    "\
+\fun n = {\n\
+\  var y = n;\n\
+\  var n = n;\n\
+\  n *= 2;\n\
+\  return y;\n\
+\};\n\
+\\n\
+\main = fun 42;\n\
+\"
+    (Out [] (Ok $ PInt 42))
+
+issue5_ass2 = TProg
+    "\
+\fun n = {\n\
+\  var y = n;\n\
+\  var n = n;\n\
+\  n *= 2;\n\
+\  return n;\n\
+\};\n\
+\\n\
+\main = fun 42;\n\
+\"
+    (Out [] (Ok $ PInt 84))
+
+issue5_immutableAss = TProg
+    "\
+\fun n = {\n\
+\    x = n;\n\
+\    x += 1;\n\
+\    return x;\n\
+\};\n\
+\\n\
+\main = fun 42;\n\
+\"
+    (Out
+        "\ESC[38;2;255;0;0mError: cannot assign to an immutable variable `x`.\n\
+    \During evaluation of:\n\
+    \ x := x + 1 ; \n\
+    \Located at line 3 column 5\ESC[38;2;255;255;255m\
+    \"
+        (Bad "runtime error.")
+    )
+
+issue5_undeclared = TProg
+    "\
+\fun n = {\n\
+\    x = n;\n\
+\    y += 1;\n\
+\    return x;\n\
+\};\n\
+\\n\
+\main = fun 42;\n\
+\"
+    (Out
+        "\ESC[38;2;255;0;0mError: undeclared identifier `y`.\n\
+    \During evaluation of:\n\
+    \ y := y + 1 ; \n\
+    \Located at line 3 column 5\ESC[38;2;255;255;255m\
+    \"
+        (Bad "runtime error.")
+    )
+
+issue5_unassignable = TProg
+    "\
+\fun n = {\n\
+\    x = n;\n\
+\    y += 1;\n\
+\    return x;\n\
+\};\n\
+\\n\
+\main = {\n\
+\    fun := (\\n => n);\n\
+\    return fun;\n\
+\};\n\
+\"
+    (Out
+        "\ESC[38;2;255;0;0mError: cannot assign to `fun`, which is a value of type 'Function'.\n\
+    \During evaluation of:\n\
+    \ fun := \\ n => n ; \n\
+    \Located at line 8 column 5\ESC[38;2;255;255;255m\
+    \"
+        (Bad "runtime error.")
+    )
+
+issue5_unassigned = TProg
+    "\
+\fun = {\n\
+\    var x;\n\
+\    n = x;\n\
+\    return n;\n\
+\};\n\
+\\n\
+\main = fun;\n\
+\"
+    (Out
+        "\ESC[38;2;255;0;0mError: variable `x` used before it was assigned.\n\
+    \During evaluation of:\n\
+    \ x \n\
+    \Located at line 3 column 9\ESC[38;2;255;255;255m\
+    \"
+        (Bad "runtime error.")
+    )
+
 testResult :: TestProgram -> Test.HUnit.Test
 testResult (TProg i (Out _ exp)) = TestCase
     (assertEqual "Expected result" exp res)
@@ -269,24 +429,34 @@ testAll (TProg i exp) = TestCase
             (False, _    ) -> (c : acc, False)
 
 tests = TestList
-    [ TestLabel "issue1_sqr"        (testResult issue1_sqr)
-    , TestLabel "issue1_partial"    (testResult issue1_partial)
-    , TestLabel "issue1_string"     (testResult issue1_string)
-    , TestLabel "issue1_bool1"      (testResult issue1_bool1)
-    , TestLabel "issue1_bool2"      (testResult issue1_bool2)
-    , TestLabel "issue1_bool3"      (testResult issue1_bool3)
-    , TestLabel "issue1_mod"        (testResult issue1_mod)
-    , TestLabel "issue1_lazy"       (testResult issue1_lazy)
-    , TestLabel "issue2_fac"        (testResult issue2_fac)
-    , TestLabel "issue2_lam"        (testResult issue2_lam)
-    , TestLabel "issue3_divZero"    (testAll issue3_divZero)
-    , TestLabel "issue3_modZero"    (testAll issue3_modZero)
-    , TestLabel "issue3_invType"    (testAll issue3_invType)
-    , TestLabel "issue3_noReturn"   (testAll issue3_noReturn)
-    , TestLabel "issue3_overApp"    (testAll issue3_overApp)
-    , TestLabel "issue3_invPred"    (testAll issue3_invPred)
-    , TestLabel "issue3_invEqTypes" (testAll issue3_invEqTypes)
-    , TestLabel "issue4_unaryMinus" (testAll issue4_unaryMinus)
+    [ TestLabel "issue1_sqr"          (testResult issue1_sqr)
+    , TestLabel "issue1_partial"      (testResult issue1_partial)
+    , TestLabel "issue1_string"       (testResult issue1_string)
+    , TestLabel "issue1_bool1"        (testResult issue1_bool1)
+    , TestLabel "issue1_bool2"        (testResult issue1_bool2)
+    , TestLabel "issue1_bool3"        (testResult issue1_bool3)
+    , TestLabel "issue1_mod"          (testResult issue1_mod)
+    , TestLabel "issue1_lazy"         (testResult issue1_lazy)
+    , TestLabel "issue2_fac"          (testResult issue2_fac)
+    , TestLabel "issue2_lam"          (testResult issue2_lam)
+    , TestLabel "issue3_divZero"      (testAll issue3_divZero)
+    , TestLabel "issue3_modZero"      (testAll issue3_modZero)
+    , TestLabel "issue3_invType"      (testAll issue3_invType)
+    , TestLabel "issue3_noReturn"     (testAll issue3_noReturn)
+    , TestLabel "issue3_overApp"      (testAll issue3_overApp)
+    , TestLabel "issue3_invPred"      (testAll issue3_invPred)
+    , TestLabel "issue3_invEqTypes"   (testAll issue3_invEqTypes)
+    , TestLabel "issue4_unaryMinus"   (testAll issue4_unaryMinus)
+    , TestLabel "issue5_lam"          (testAll issue5_lam)
+    , TestLabel "issue5_lam2"         (testAll issue5_lam2)
+    , TestLabel "issue5_lam3"         (testAll issue5_lam3)
+    , TestLabel "issue5_while"        (testAll issue5_while)
+    , TestLabel "issue5_ass"          (testAll issue5_ass)
+    , TestLabel "issue5_ass2"         (testAll issue5_ass2)
+    , TestLabel "issue5_immutableAss" (testAll issue5_immutableAss)
+    , TestLabel "issue5_undeclared"   (testAll issue5_undeclared)
+    , TestLabel "issue5_unassignable" (testAll issue5_unassignable)
+    , TestLabel "issue5_unassigned"   (testAll issue5_unassigned)
     ]
 
 main :: IO ()

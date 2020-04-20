@@ -2,6 +2,7 @@ module Harper.Engine.Output
     ( HarperOutput
     , showsPrt
     , outputMsg
+    , outputLog
     , outputErr
     )
 where
@@ -29,6 +30,9 @@ ansiFgColor (RGB r g b) =
 white :: Color
 white = RGB 255 255 255
 
+grey :: Color
+grey = RGB 128 128 128
+
 red :: Color
 red = RGB 255 0 0
 
@@ -37,6 +41,11 @@ showsPrt x = (render (prt 0 x) ++)
 
 outputMsg :: String -> HarperOutput ()
 outputMsg s = output (s ++)
+
+outputLog :: ShowS -> HarperOutput ()
+outputLog s = output msg
+  where
+    msg = ansiFgColor grey . ("Log: " ++) . s . ("\n" ++) . ansiFgColor white
 
 outputErr :: (Position a, Print a) => ShowS -> a -> HarperOutput ()
 outputErr s ctx = output msg
