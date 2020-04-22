@@ -383,16 +383,16 @@ instance Functor TypeSignature where
     fmap f x = case x of
         TSig a uident typearguments -> TSig (f a) uident (map (fmap f) typearguments)
 data TypeDecl a
-    = ExprTDecl a (TypeSignature a) (TypeBody a)
+    = ValTDecl a (TypeSignature a) (TypeBody a)
+    | ValTUDecl a (TypeSignature a) [TypeVariantDecl a]
     | RefTDecl a (TypeSignature a) (TypeBody a)
-    | ExprTUDecl a (TypeSignature a) [TypeVariantDecl a]
   deriving (Eq, Ord, Show, Read)
 
 instance Functor TypeDecl where
     fmap f x = case x of
-        ExprTDecl a typesignature typebody -> ExprTDecl (f a) (fmap f typesignature) (fmap f typebody)
+        ValTDecl a typesignature typebody -> ValTDecl (f a) (fmap f typesignature) (fmap f typebody)
+        ValTUDecl a typesignature typevariantdecls -> ValTUDecl (f a) (fmap f typesignature) (map (fmap f) typevariantdecls)
         RefTDecl a typesignature typebody -> RefTDecl (f a) (fmap f typesignature) (fmap f typebody)
-        ExprTUDecl a typesignature typevariantdecls -> ExprTUDecl (f a) (fmap f typesignature) (map (fmap f) typevariantdecls)
 data TypeArgument a = TArg a Ident
   deriving (Eq, Ord, Show, Read)
 

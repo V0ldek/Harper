@@ -1,5 +1,6 @@
 module Harper.Engine.Error where
 import           Control.Monad.Trans
+import           Data.List
 
 import           Harper.Abs
 import           Harper.Abs.Pos
@@ -154,9 +155,54 @@ undeclaredIdent i ctx = do
     outputErr (("undeclared identifier `" ++) . showsPrt i . ("`." ++)) ctx
     runtimeErr
 
+undeclaredUIdent :: (Print p, Position p) => UIdent -> p -> HarperOutput a
+undeclaredUIdent i ctx = do
+    outputErr (("undeclared type identifier `" ++) . showsPrt i . ("`." ++)) ctx
+    runtimeErr
+
 unassVar :: (Print p, Position p) => Ident -> p -> HarperOutput a
 unassVar i ctx = do
     outputErr
         (("variable `" ++) . showsPrt i . ("` used before it was assigned." ++))
         ctx
     runtimeErr
+
+nonExhPatMatch :: (Print p, Position p) => p -> HarperOutput a
+nonExhPatMatch ctx = do
+    outputErr ("non exhaustive pattern match." ++) ctx
+    runtimeErr
+
+invFldAcc :: (Print p, Position p) => Type -> Ident -> p -> HarperOutput a
+invFldAcc t i ctx = do
+    outputErr
+        (("type `" ++) . shows t . ("` has no field `" ++) . shows i . ("`." ++)
+        )
+        ctx
+    runtimeErr
+
+unassFlds :: (Print p, Position p) => Type -> [Ident] -> p -> HarperOutput a
+unassFlds t is ctx = do
+    outputErr
+        (("all fields must be assigned during value construction. Unassigned fields for `" ++
+         )
+        . shows t
+        . ("` are: `" ++)
+        . flds
+        . ("`." ++)
+        )
+        ctx
+    runtimeErr
+    where flds = foldr (.) id $ intersperse ("`, `" ++) $ map showsPrt is
+
+excessFlds :: (Print p, Position p) => Type -> [Ident] -> p -> HarperOutput a
+excessFlds t is ctx = do
+    outputErr
+        (("unrecognized field identifiers during value construction. Type `" ++)
+        . shows t
+        . ("` has no fields: `" ++)
+        . flds
+        . ("`." ++)
+        )
+        ctx
+    runtimeErr
+    where flds = foldr (.) id $ intersperse ("`, `" ++) $ map showsPrt is

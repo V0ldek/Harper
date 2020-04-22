@@ -197,7 +197,7 @@ instance Print (Expression a) where
     GEqExpr _ expression1 expression2 -> prPrec i 3 (concatD [prt 3 expression1, doc (showString ">="), prt 4 expression2])
     AndExpr _ expression1 expression2 -> prPrec i 2 (concatD [prt 2 expression1, doc (showString "and"), prt 3 expression2])
     OrExpr _ expression1 expression2 -> prPrec i 2 (concatD [prt 2 expression1, doc (showString "or"), prt 3 expression2])
-    SeqExpr _ expression1 expression2 -> prPrec i 1 (concatD [prt 1 expression1, doc (showString "|"), prt 2 expression2])
+    SeqExpr _ expression1 expression2 -> prPrec i 1 (concatD [prt 2 expression1, doc (showString "|"), prt 1 expression2])
     LamExpr _ lambdaargs funbody -> prPrec i 0 (concatD [doc (showString "\\"), prt 0 lambdaargs, doc (showString "=>"), prt 0 funbody])
 
 instance Print (TupleExpression a) where
@@ -277,7 +277,7 @@ instance Print (Pattern a) where
   prt i e = case e of
     PatLit _ literal -> prPrec i 2 (concatD [prt 0 literal])
     PatDecl _ localobjdecl -> prPrec i 1 (concatD [prt 0 localobjdecl])
-    PatData _ fieldpatterns -> prPrec i 1 (concatD [doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
+    PatData _ fieldpatterns -> prPrec i 1 (concatD [doc (showString "val"), doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
     PatTup _ tuplepattern -> prPrec i 1 (concatD [doc (showString "("), prt 0 tuplepattern, doc (showString ")")])
     PatDisc _ -> prPrec i 1 (concatD [doc (showString "_")])
     PatCtor _ uident fieldpatterns -> prPrec i 0 (concatD [prt 0 uident, doc (showString "{"), prt 0 fieldpatterns, doc (showString "}")])
@@ -290,6 +290,7 @@ instance Print (TuplePattern a) where
 instance Print (FieldPattern a) where
   prt i e = case e of
     PatFld _ id pattern -> prPrec i 0 (concatD [prt 0 id, doc (showString ":"), prt 0 pattern])
+  prtList _ [] = (concatD [])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
 instance Print (Declaration a) where
@@ -319,9 +320,9 @@ instance Print (TypeSignature a) where
 
 instance Print (TypeDecl a) where
   prt i e = case e of
-    ExprTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
+    ValTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
+    ValTUDecl _ typesignature typevariantdecls -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typevariantdecls, doc (showString "}")])
     RefTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "ref"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
-    ExprTUDecl _ typesignature typevariantdecls -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typevariantdecls, doc (showString "}")])
 
 instance Print (TypeArgument a) where
   prt i e = case e of

@@ -190,9 +190,9 @@ instance Position (TypeSignature Pos) where
     pos (TSig a _ _) = a
 
 instance Position (TypeDecl Pos) where
-    pos (ExprTDecl  a _ _) = a
+    pos (ValTDecl  a _ _) = a
     pos (RefTDecl   a _ _) = a
-    pos (ExprTUDecl a _ _) = a
+    pos (ValTUDecl a _ _) = a
 
 instance Position (TypeArgument Pos) where
     pos (TArg a _) = a

@@ -9,50 +9,32 @@ import           Control.Monad.Reader
 import           Control.Monad.Writer
 import           Control.Monad.State
 import qualified Data.Map                      as Map
+import qualified Data.Set                      as Set
+import           Data.Maybe
 import           Data.List
 
 import           Harper.Abs
 import           Harper.Printer
+import           Harper.Engine.Alloc
 import           Harper.Engine.Conditionals
+import           Harper.Engine.Core
+import           Harper.Engine.Declarations
 import           Harper.Engine.Error            ( raise )
 import qualified Harper.Engine.Error           as Error
-import           Harper.Engine.Core
 import           Harper.Engine.Expressions
-import           Harper.Engine.Snapshots
 import           Harper.Engine.Output
+import           Harper.Engine.Snapshots
+import           Harper.Engine.Thunk
 import           OutputM
 
 runInterpreter :: Program Pos -> HarperOutput Object
 runInterpreter tree =
-    evalStateT (runReaderT (interpret tree) Map.empty) Map.empty
+    evalStateT (runReaderT (interpret tree) (Env Map.empty Map.empty)) Map.empty
 
 interpret :: Program Pos -> Interpreter Object
 interpret (Prog _ ds) = do
-    let fds = [ fd | TopLvlFDecl _ fd <- ds ]
-    env <- decls fds
-    local env (eval $ ObjExpr Nothing (Ident "main"))
-
-decls :: [FunDecl Pos] -> Interpreter (Env -> Env)
-decls ds = do
-    st  <- get
-    env <- ask
-    let n     = length ds
-        ls    = newlocs n st
-        is    = [ i | FDecl _ i _ _ <- ds ]
-        isls  = zip is ls
-        env'  = Map.fromList isls
-        fobjs = map (declToFun (Map.union env' env)) ds
-        lsfs  = zip ls fobjs
-        st'   = Map.fromList lsfs
-    modify (Map.union st')
-    return (Map.union env')
-  where
-    declToFun env (FDecl _ i params (FExprBody a body)) =
-        case [ i | FArg _ i <- params ] of
-            [] -> Thunk body env
-            ps -> Fun ps (RetExprStmt a body) env
-    declToFun env (FDecl _ i params (FStmtBody _ body)) =
-        Fun [ i | FArg _ i <- params ] body env
+    env <- topLvlDecls ds
+    local (const env) (eval $ ObjExpr Nothing (Ident "main"))
 
 fBodyToStmt :: FunBody Pos -> Statement Pos
 fBodyToStmt (FStmtBody _ s) = s
@@ -69,26 +51,45 @@ eval (  LitExpr _ (StrLit  _ s         )) = return $ PStr s
 eval (  LitExpr _ (CharLit _ c         )) = return $ PChar c
 eval (  LitExpr _ (UnitLit _           )) = return PUnit
 
+-- Value construction.
+
+eval e@(VCtorExpr _ ctor flds           ) = do
+    lookup <- asks (Map.lookup ctor . types)
+    case lookup of
+        Just t@VType { flds = fldIs } -> do
+            _data <- mapM fldAssToData flds
+            let dataIs      = Set.fromList $ map fst _data
+                notDeclared = fldIs Set.\\ dataIs
+                excess      = dataIs Set.\\ fldIs
+            unless (Set.null notDeclared)
+                   (raise $ Error.unassFlds t (Set.toList notDeclared) e)
+            unless (Set.null excess)
+                   (raise $ Error.excessFlds t (Set.toList excess) e)
+            return $ Value t (Map.fromList _data)
+        Nothing -> raise $ Error.undeclaredUIdent ctor e
+  where
+    fldAssToData (DataAss _ i e) = do
+        t <- emplaceThunk e
+        return (i, fromJust $ this t)
+
 -- Object access.
 
-eval e@(ObjExpr _ i                     ) = do
-    lookup <- asks (Map.lookup i)
+eval e@(ObjExpr _ i) = do
+    lookup <- asks (Map.lookup i . objs)
     case lookup of
         Just l -> do
             o <- gets (Map.! l)
-            case o of
-                Var (Just (Thunk e env)) -> do
-                    o' <- local (const env) (eval e)
-                    modify (Map.insert l (Var (Just o')))
-                    return o'
-                Var Nothing -> raise $ Error.unassVar i e
-                Thunk e env -> do
-                    o' <- local (const env) (eval e)
-                    modify (Map.insert l o')
-                    return o'
-                Fun [] body env -> local (const env) (call body)
-                _               -> return o
+            evalObj o
         Nothing -> raise $ Error.undeclaredIdent i e
+  where
+    evalObj o = case o of
+        Var (Just ptr) -> do
+            o' <- gets (Map.! ptr)
+            evalObj o'
+        Var Nothing     -> raise $ Error.unassVar i e
+        Thunk{}         -> evalThunk o
+        Fun [] body env -> localObjs (const env) (call body)
+        _               -> return o
 
 -- Function application.
 
@@ -96,12 +97,35 @@ eval (AppExpr _ e1 e2) = do
     o1 <- eval e1
     apply o1 e2
 
+ -- Function sequencing.
+
+eval (SeqExpr _ e1 e2) = do
+    o1 <- eval e1
+    apply o1 e2
+
 -- Lambda expressions.
 
-eval (LamExpr _ params body) = do
-    env <- ask
-    let ps = [ i | LamArg _ (PatDecl _ (LocValDecl _ (Decl _ i))) <- params ]
-    return $ Fun ps (fBodyToStmt body) env
+eval (LamExpr a params body) = do
+    env <- asks objs
+    let n     = length params
+        ps    = newvars n env
+        pats  = [ p | LamArg _ p <- params ]
+        body' = genMatchChain (zip ps pats) (fBodyToStmt body)
+    return $ Fun ps body' env
+  where
+    genMatchChain ((p, pat) : xs) body = MatchStmt
+        a
+        (ObjExpr a p)
+        [MatchStmtClause a pat (genMatchChain xs body)]
+    genMatchChain [] body = body
+
+-- Match expressions.
+
+eval m@(MatchExpr _ e cs) = evalMatches e cs
+  where
+    evalMatches o (MatchExprClause _ p e : cs) =
+        patMatch p o (eval e) (evalMatches o cs)
+    evalMatches _ [] = raise $ Error.nonExhPatMatch m
 
 -- Integer operators.
 
@@ -165,14 +189,10 @@ eval e =
 
 apply :: Object -> Expression Pos -> Interpreter Object
 apply (Fun (p : ps) s env) argV = do
-    argEnv <- ask
-    arg    <- makeThunk argV argEnv
-    st     <- get
-    let l    = newloc st
-        env' = Map.insert p l env
-    modify (Map.insert l arg)
+    arg <- emplaceThunk argV
+    let env' = Map.insert p (fromJust $ this arg) env
     case ps of
-        [] -> local (const env') (call s)
+        [] -> localObjs (const env') (call s)
         _  -> return $ Fun ps s env'
 apply _ argV = raise $ Error.overApp argV
 
@@ -185,9 +205,9 @@ call s = exec s return f where f = raise $ Error.noReturn s
 -- the place of call. Using k continues the execution to the next statement.
 exec
     :: Statement Pos
-    -> (Object -> Interpreter Object)
-    -> Interpreter Object
-    -> Interpreter Object
+    -> (Object -> Interpreter a)
+    -> Interpreter a
+    -> Interpreter a
 exec (RetExprStmt _ e) kRet _ = do
     o <- eval e
     kRet o
@@ -215,42 +235,38 @@ exec w@(WhileStmt _ pred s) kRet k = do
         PBool True  -> exec s kRet (exec w kRet k)
         PBool False -> k
         _           -> raise $ Error.invType (objType o) "Bool" pred w
+exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
+  where
+    execMatches e (MatchStmtClause _ p s : cs) =
+        patMatch p e (exec s kRet k) (execMatches e cs)
+    execMatches _ [] = raise $ Error.nonExhPatMatch m
 
 -- Declarations.
 
 exec (DeclStmt _ decl) _ k = case decl of
     LocVarDecl _ (Decl _ i) -> do
-        st <- get
-        let l   = newloc st
-            var = Var Nothing
-        modify (Map.insert l var)
-        local (Map.insert i l) k
+        l <- alloc (Var Nothing)
+        localObjs (Map.insert i l) k
 exec (DconStmt _ (PatDecl _ decl) e) _ k = do
-    env <- ask
-    val <- makeThunk e env
-    st  <- get
-    let l = newloc st
+    val <- emplaceThunk e
     case decl of
         LocVarDecl _ (Decl _ i) -> do
-            let var = Var (Just val)
-            modify (Map.insert l var)
-            local (Map.insert i l) k
-        LocValDecl _ (Decl _ i) -> do
-            modify (Map.insert l val)
-            local (Map.insert i l) k
+            l <- alloc (Var (this val))
+            localObjs (Map.insert i l) k
+        LocValDecl _ (Decl _ i) ->
+            localObjs (Map.insert i (fromJust $ this val)) k
 
 -- Assignment.
 
 exec s@(AssStmt _ i e) kRet k = do
-    lookup <- asks (Map.lookup i)
+    lookup <- asks (Map.lookup i . objs)
     case lookup of
         Just l -> do
             o <- gets (Map.! l)
             case o of
                 Var{} -> do
-                    env <- ask
-                    val <- makeThunk e env
-                    modify (Map.insert l (Var $ Just val))
+                    val <- emplaceThunk e
+                    modify (Map.insert l (Var $ this val))
                     k
                 Thunk{} -> raise $ Error.assToValue i s
                 o       -> raise $ Error.invAss (objType o) i s
@@ -302,7 +318,7 @@ evalEqOp e = do
         (PBool b1, PBool b2) -> f $ b1 == b2
         (PStr  s1, PStr s2 ) -> f $ s1 == s2
         (PChar c1, PChar c2) -> f $ c1 == c2
-        (PUnit   , PUnit   ) -> f $ PUnit == PUnit
+        (PUnit   , PUnit   ) -> f True
         _ -> raise $ Error.invEqTypes (objType o1) (objType o2) e1 e2 e
 
 evalCmpOp :: Expression Pos -> Interpreter Object
@@ -319,10 +335,66 @@ evalCmpOp e = do
         (PInt  n1, PInt n2 ) -> f $ n1 `compare` n2
         (PStr  s1, PStr s2 ) -> f $ s1 `compare` s2
         (PChar c1, PChar c2) -> f $ c1 `compare` c2
-        (PUnit   , PUnit   ) -> f $ PUnit `compare` PUnit
+        (PUnit   , PUnit   ) -> f EQ
         _ -> raise $ Error.invCmpTypes (objType o1) (objType o2) e1 e2 e
 
-makeThunk :: Expression Pos -> Env -> Interpreter Object
-makeThunk e env = do
-    (e', env') <- snapshotExpr e
-    return (Thunk e' (env' env))
+evalThunk :: Object -> Interpreter Object
+evalThunk (Thunk e env ptr) = do
+    o <- localObjs (const env) (eval e)
+    case ptr of
+        Just l -> do
+            modify (Map.insert l o)
+            return o
+        _ -> return o
+evalThunk o = return o
+
+-- Continuation passing style - kMatch is called when object matches the pattern, kElse otherwise.
+patMatch
+    :: Pattern Pos
+    -> Expression Pos
+    -> Interpreter a
+    -> Interpreter a
+    -> Interpreter a
+patMatch PatDisc{}  _ kMatch _     = kMatch
+patMatch p@PatLit{} e kMatch kElse = do
+    o <- eval e
+    patMatch' p o kMatch kElse
+patMatch (PatDecl _ decl) e kMatch _ = do
+    env <- declLocal decl e
+    localObjs (const env) kMatch
+patMatch p@PatCtor{} e kMatch kElse = do
+    o <- eval e
+    patMatch' p o kMatch kElse
+
+patMatch'
+    :: Pattern Pos -> Object -> Interpreter a -> Interpreter a -> Interpreter a
+patMatch' PatDisc{}      _ kMatch _     = kMatch
+patMatch' (PatLit _ lit) o kMatch kElse = do
+    o' <- evalThunk o
+    case (lit, o') of
+        (IntLit _ n1, PInt n2) | n1 == n2   -> kMatch
+        (BoolLit _ (BTrue  _), PBool True ) -> kMatch
+        (BoolLit _ (BFalse _), PBool False) -> kMatch
+        (CharLit _ c1, PChar c2) | c1 == c2 -> kMatch
+        (StrLit _ s1, PStr s2) | s1 == s2   -> kMatch
+        (UnitLit _, PUnit)                  -> kMatch
+        _                                   -> kElse
+patMatch' (PatDecl _ decl) o kMatch _ = do
+    l   <- alloc o
+    env <- declLocal' decl l
+    localObjs (const env) kMatch
+patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
+    o' <- evalThunk o
+    case o' of
+        v@(Value t _) | ctor t == c -> matchFlds v flds kMatch kElse
+        _                           -> kElse
+  where
+    matchFlds v@(Value t d) (PatFld _ i p : flds) kMatch kElse =
+        case Map.lookup i d of
+            Just l -> do
+                o <- gets (Map.! l)
+                patMatch' p o (matchFlds v flds kMatch kElse) kElse
+            Nothing -> raise $ Error.invFldAcc t i p
+    matchFlds v [] kMatch _ = kMatch
+patMatch' p _ _ _ =
+    error $ "Pattern matching this type of patterns is unsupported: " ++ show p

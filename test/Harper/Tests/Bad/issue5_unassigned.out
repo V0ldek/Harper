@@ -1,0 +1,6 @@
+Error: variable `x` used before it was assigned.
+During evaluation of:
+x
+Located at line 3 column 9
+
+Execution terminated with an error: runtime error.

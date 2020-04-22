@@ -155,7 +155,7 @@ All other symbols are terminals.
   | //Expression2// | -> | //Expression2// ``and`` //Expression3// 
   |  |  **|**  | //Expression2// ``or`` //Expression3// 
   |  |  **|**  | //Expression3// 
-  | //Expression1// | -> | //Expression1// ``|`` //Expression2// 
+  | //Expression1// | -> | //Expression2// ``|`` //Expression1// 
   |  |  **|**  | //Expression2// 
   | //Expression// | -> | ``\`` //[LambdaArg]// ``=>`` //FunBody// 
   |  |  **|**  | //Expression1// 
@@ -218,7 +218,7 @@ All other symbols are terminals.
   | //Pattern2// | -> | //Literal// 
   | //Pattern1// | -> | //Pattern2// 
   |  |  **|**  | //LocalObjDecl// 
-  |  |  **|**  | ``{`` //[FieldPattern]// ``}`` 
+  |  |  **|**  | ``val`` ``{`` //[FieldPattern]// ``}`` 
   |  |  **|**  | ``(`` //TuplePattern// ``)`` 
   |  |  **|**  | ``_`` 
   | //Pattern// | -> | //Pattern1// 
@@ -226,7 +226,8 @@ All other symbols are terminals.
   | //TuplePattern// | -> | //Pattern// ``,`` //TuplePattern// 
   |  |  **|**  | //Pattern// ``,`` //Pattern// 
   | //FieldPattern// | -> | //Ident// ``:`` //Pattern// 
-  | //[FieldPattern]// | -> | //FieldPattern// 
+  | //[FieldPattern]// | -> | **eps**
+  |  |  **|**  | //FieldPattern// 
   |  |  **|**  | //FieldPattern// ``,`` //[FieldPattern]// 
   | //Declaration// | -> | //Ident// 
   |  |  **|**  | ``(`` //TypeHint// ``)`` 
@@ -242,8 +243,8 @@ All other symbols are terminals.
   |  |  **|**  | //LocalFunDecl// ``;`` //[LocalFunDecl]// 
   | //TypeSignature// | -> | //UIdent// //[TypeArgument]// 
   | //TypeDecl// | -> | ``value`` //TypeSignature// ``=`` ``{`` //TypeBody// ``}`` 
-  |  |  **|**  | ``ref`` //TypeSignature// ``=`` ``{`` //TypeBody// ``}`` 
   |  |  **|**  | ``value`` //TypeSignature// ``=`` ``{`` //[TypeVariantDecl]// ``}`` 
+  |  |  **|**  | ``ref`` //TypeSignature// ``=`` ``{`` //TypeBody// ``}`` 
   | //TypeArgument// | -> | //Ident// 
   | //[TypeArgument]// | -> | **eps**
   |  |  **|**  | //TypeArgument// //[TypeArgument]// 

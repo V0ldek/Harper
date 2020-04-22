@@ -1,0 +1,7 @@
+Error: cannot assign to `fun`, which is a value of type 'Function'.
+During evaluation of:
+fun := \ n => n ;
+
+Located at line 8 column 5
+
+Execution terminated with an error: runtime error.
