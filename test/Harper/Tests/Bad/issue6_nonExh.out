@@ -1,0 +1,10 @@
+Error: non exhaustive pattern match.
+During evaluation of
+ match list {
+   NonEmpty { head: 17 } => 42,
+   Empty {} => 0
+ };
+
+Located at line 2 column 3
+
+Execution terminated with an error: runtime error.

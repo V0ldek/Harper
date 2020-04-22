@@ -109,7 +109,7 @@ GEqExpr.   Expression3 ::= Expression3 ">=" Expression4 ;
 AndExpr.   Expression2 ::= Expression2 "and" Expression3 ;
 OrExpr.    Expression2 ::= Expression2 "or" Expression3 ;
 
-SeqExpr.   Expression1 ::= Expression1 "|" Expression2 ;
+SeqExpr.   Expression1 ::= Expression2 "|" Expression1 ;
 
 LamExpr.   Expression ::= "\\" [LambdaArg] "=>" FunBody ;
 
@@ -194,7 +194,7 @@ separator ElseIfStatement "" ;
 PatLit.  Pattern2 ::= Literal ;
 _.       Pattern1 ::= Pattern2 ;
 PatDecl. Pattern1 ::= LocalObjDecl ;
-PatData. Pattern1 ::= "{" [FieldPattern] "}" ;
+PatData. Pattern1 ::= "val" "{" [FieldPattern] "}" ;
 PatTup.  Pattern1 ::= "(" TuplePattern ")" ;
 PatDisc. Pattern1 ::= "_" ;
 _.       Pattern ::= Pattern1 ;
@@ -208,7 +208,7 @@ PatTupTail. TuplePattern ::= Pattern "," Pattern ;
 -- Data patterns.
 
 PatFld. FieldPattern ::= Ident ":" Pattern ;
-separator nonempty FieldPattern "," ;
+separator FieldPattern "," ;
 
 -- Local declarations.
 
@@ -230,9 +230,9 @@ terminator nonempty LocalFunDecl ";" ;
 
 TSig. TypeSignature ::= UIdent [TypeArgument] ;
 
-ExprTDecl.  TypeDecl ::= "value" TypeSignature "=" "{" TypeBody "}" ;
+ValTDecl.  TypeDecl ::= "value" TypeSignature "=" "{" TypeBody "}" ;
+ValTUDecl. TypeDecl ::= "value" TypeSignature "=" "{" [TypeVariantDecl] "}" ;
 RefTDecl.   TypeDecl ::= "ref" TypeSignature "=" "{" TypeBody "}" ;
-ExprTUDecl. TypeDecl ::= "value" TypeSignature "=" "{" [TypeVariantDecl] "}" ;
 
 TArg. TypeArgument ::= Ident ;
 separator TypeArgument "" ;

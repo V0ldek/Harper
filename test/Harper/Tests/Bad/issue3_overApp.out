@@ -1,0 +1,6 @@
+Error: function applied to too many arguments.
+During evaluation of:
+1
+Located at line 5 column 25
+
+Execution terminated with an error: runtime error.
