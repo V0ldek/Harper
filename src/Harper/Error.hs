@@ -1,18 +1,21 @@
-module Harper.Engine.Error where
+module Harper.Error where
 import           Control.Monad.Trans
 import           Data.List
 
 import           Harper.Abs
 import           Harper.Abs.Pos
-import           Harper.Engine.Core
-import           Harper.Engine.Output
+import           Harper.Interpreter.Core
+import           Harper.TypeSystem.Core         ( Type
+                                                , TypeCtor
+                                                )
+import           Harper.Output
 import           Harper.Printer
-
-raise :: HarperOutput a -> Interpreter a
-raise = lift . lift
 
 runtimeErr :: HarperOutput a
 runtimeErr = fail "runtime error."
+
+typeErr :: HarperOutput a
+typeErr = fail "type error."
 
 invType
     :: (Print p, Position p)
@@ -172,7 +175,7 @@ nonExhPatMatch ctx = do
     outputErr ("non exhaustive pattern match." ++) ctx
     runtimeErr
 
-invFldAcc :: (Print p, Position p) => Type -> Ident -> p -> HarperOutput a
+invFldAcc :: (Print p, Position p) => TypeCtor -> Ident -> p -> HarperOutput a
 invFldAcc t i ctx = do
     outputErr
         (("type `" ++) . shows t . ("` has no field `" ++) . shows i . ("`." ++)
@@ -180,7 +183,7 @@ invFldAcc t i ctx = do
         ctx
     runtimeErr
 
-unassFlds :: (Print p, Position p) => Type -> [Ident] -> p -> HarperOutput a
+unassFlds :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 unassFlds t is ctx = do
     outputErr
         (("all fields must be assigned during value construction. Unassigned fields for `" ++
@@ -192,9 +195,10 @@ unassFlds t is ctx = do
         )
         ctx
     runtimeErr
-    where flds = foldr (.) id $ intersperse ("`, `" ++) $ map showsPrt is
+    where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
 
-excessFlds :: (Print p, Position p) => Type -> [Ident] -> p -> HarperOutput a
+excessFlds
+    :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 excessFlds t is ctx = do
     outputErr
         (("unrecognized field identifiers during value construction. Type `" ++)
@@ -205,4 +209,47 @@ excessFlds t is ctx = do
         )
         ctx
     runtimeErr
-    where flds = foldr (.) id $ intersperse ("`, `" ++) $ map showsPrt is
+    where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
+
+conflTypeNames :: (Print p, Position p) => Ident -> p -> p -> HarperOutput a
+conflTypeNames i ctx1 ctx2 = do
+    outputConfl (("conflicting type name `" ++) . showsPrt i . ("`." ++))
+                ctx1
+                ctx2
+    typeErr
+
+conflCtorNames :: (Print p, Position p) => UIdent -> p -> p -> HarperOutput a
+conflCtorNames i ctx1 ctx2 = do
+    outputConfl (("conflicting ctor name `" ++) . showsPrt i . ("`." ++))
+                ctx1
+                ctx2
+    typeErr
+
+conflTypeParam :: (Print p, Position p) => Ident -> p -> HarperOutput a
+conflTypeParam i ctx = do
+    outputErr
+        (("conflicting type parameter name `" ++) . showsPrt i . ("`." ++))
+        ctx
+    typeErr
+
+typeInvArity
+    :: (Print p, Position p) => Type -> Int -> Int -> p -> HarperOutput a
+typeInvArity t tArity nArgs ctx = do
+    outputErr
+        ( ("the type `" ++)
+        . shows t
+        . ("` is applied to " ++)
+        . shows nArgs
+        . (" type arguments, but it has arity " ++)
+        . shows tArity
+        . ("." ++)
+        )
+        ctx
+    typeErr
+
+unboundTypeVar :: (Print p, Position p) => Ident -> p -> HarperOutput a
+unboundTypeVar i ctx = do
+    outputErr
+        (("unbound type variable identifier `" ++) . showsPrt i . ("` outside of a type signature declaration." ++))
+        ctx
+    typeErr

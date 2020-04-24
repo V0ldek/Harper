@@ -1,11 +1,12 @@
-module Harper.Engine.Thunk where
+module Harper.Interpreter.Thunk where
 import Control.Monad.Reader
 import Control.Monad.State
 import qualified Data.Map as Map
 
 import Harper.Abs
-import Harper.Engine.Core
-import Harper.Engine.Snapshots
+import Harper.Alloc
+import Harper.Interpreter.Core
+import Harper.Interpreter.Snapshots
 
 makeThunk :: Expression Pos -> Interpreter Object
 makeThunk e = do
@@ -17,7 +18,7 @@ emplaceThunk :: Expression Pos -> Interpreter Object
 emplaceThunk e = do
     env <- asks objs
     (e', env') <- snapshotExpr e
-    l <- gets newloc
+    l <- newloc
     let thunk = Thunk e' (env' env) (Just l)
     modify (Map.insert l thunk)
     return thunk

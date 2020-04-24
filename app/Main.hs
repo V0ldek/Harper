@@ -13,11 +13,12 @@ import           System.Exit                    ( exitFailure
                                                 )
 import           Control.Monad                  ( when )
 
+import           Harper.Abs
+import           Harper.Interpreter
 import           Harper.Lexer
 import           Harper.Parser
 import           Harper.Printer
-import           Harper.Abs
-import           Harper.Engine
+import           Harper.TypeChecker
 
 
 import           ErrM
@@ -38,7 +39,8 @@ runFile v p f = putStrLn f >> readFile f >>= run v p
 run :: Verbosity -> ParseFun (Program Pos) -> String -> IO ()
 run v p s =
     let ts = myLLexer s
-    in  case p ts of
+    in
+        case p ts of
             Bad s -> do
                 putStrLn "\nParse              Failed...\n"
                 putStrV v "Tokens:"
@@ -48,10 +50,22 @@ run v p s =
             Ok tree -> do
                 putStrLn "\nParse Successful!"
                 showTree v tree
-                let Out out res = runInterpreter tree
+                let Out out res = runTypeChecker tree
                 putStrLn $ out ""
                 case res of
-                    Ok v  -> putStrLn $ "\nExecution ended with value: " ++ show v
+                    Ok (tree', tenv) -> do
+                        let Out out res = runInterpreter tree' tenv
+                        putStrLn $ out ""
+                        case res of
+                            Ok v ->
+                                putStrLn
+                                    $  "\nExecution ended with value: "
+                                    ++ show v
+                            Bad s -> do
+                                putStrLn
+                                    $  "\nExecution terminated with an error: "
+                                    ++ s
+                                exitFailure
                     Bad s -> do
                         putStrLn $ "\nExecution terminated with an error: " ++ s
                         exitFailure

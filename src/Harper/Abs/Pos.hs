@@ -18,14 +18,13 @@ instance Position (TypeHint Pos) where
     pos (THint a _ _) = a
 
 instance Position (TypeExpr Pos) where
-    pos (TVar  a _ ) = a
-    pos (TCtor a _ ) = a
-    pos (TPur  a _ ) = a
-    pos (TUnit a   ) = a
-    pos (TTup   a _) = a
-    pos (TAdHoc a _) = a
-    pos (TApp a _ _) = a
-    pos (TFun a _ _) = a
+    pos (TVar a _   ) = a
+    pos (TPur a _   ) = a
+    pos (TUnit a    ) = a
+    pos (TTup   a _ ) = a
+    pos (TAdHoc a _ ) = a
+    pos (TCtor a _ _) = a
+    pos (TFun  a _ _) = a
 
 instance Position (TupleType Pos) where
     pos (TTupList a _ _) = a
@@ -41,11 +40,11 @@ instance Position (FieldTypeExpr Pos) where
 instance Position (FunDecl Pos) where
     pos (FDecl a _ _ _) = a
 
-instance Position (FunArg Pos) where
-    pos (FArg a _) = a
+instance Position (FunParam Pos) where
+    pos (FParam a _) = a
 
-instance Position (LambdaArg Pos) where
-    pos (LamArg a _) = a
+instance Position (LambdaParam Pos) where
+    pos (LamParam a _) = a
 
 instance Position (FunBody Pos) where
     pos (FExprBody a _) = a
@@ -191,11 +190,11 @@ instance Position (TypeSignature Pos) where
 
 instance Position (TypeDecl Pos) where
     pos (ValTDecl  a _ _) = a
-    pos (RefTDecl   a _ _) = a
+    pos (RefTDecl  a _ _) = a
     pos (ValTUDecl a _ _) = a
 
-instance Position (TypeArgument Pos) where
-    pos (TArg a _) = a
+instance Position (TypeParameter Pos) where
+    pos (TParam a _) = a
 
 instance Position (TypeVariantDecl Pos) where
     pos (TVarDecl a _ _) = a

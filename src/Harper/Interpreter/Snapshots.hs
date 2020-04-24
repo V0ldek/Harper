@@ -1,4 +1,4 @@
-module Harper.Engine.Snapshots
+module Harper.Interpreter.Snapshots
     ( snapshotExpr
     )
 where
@@ -7,9 +7,9 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 
 import           Harper.Abs
-import           Harper.Engine.Alloc
-import           Harper.Engine.Core
-import           Harper.Engine.Error            ( raise )
+import           Harper.Alloc
+import           Harper.Interpreter.Core
+import           Harper.Error
 
 snapshotExpr :: Expression Pos -> Interpreter (Expression Pos, OEnv -> OEnv)
 

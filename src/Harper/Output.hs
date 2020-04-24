@@ -1,9 +1,10 @@
-module Harper.Engine.Output
+module Harper.Output
     ( HarperOutput
     , showsPrt
     , outputMsg
     , outputLog
     , outputErr
+    , outputConfl
     )
 where
 
@@ -56,9 +57,27 @@ outputErr s ctx = output msg
             . s
             . ("\nDuring evaluation of:\n" ++)
             . showsPrt ctx
-            . position
+            . prtPosition ctx
             . ansiFgColor white
-    position = case pos ctx of
-        Nothing -> id
-        Just (l, c) ->
+
+
+outputConfl :: (Position a, Print a, Position b, Print b) => ShowS -> a -> b -> HarperOutput ()
+outputConfl s ctx1 ctx2 = output msg
+  where
+    msg =
+        ansiFgColor red
+            . ("Error: " ++)
+            . s
+            . ("\nDuring evaluation of:\n" ++)
+            . showsPrt ctx2
+            . prtPosition ctx2
+            . ("\nConfilting with:\n" ++)
+            . showsPrt ctx1
+            . prtPosition ctx1
+            . ansiFgColor white
+
+prtPosition :: Position a => a -> ShowS
+prtPosition a = case pos a of
+    Nothing -> id
+    Just (l, c) -> 
             ("\nLocated at line " ++) . shows l . (" column " ++) . shows c

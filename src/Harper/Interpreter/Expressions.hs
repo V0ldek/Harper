@@ -1,4 +1,4 @@
-module Harper.Engine.Expressions where
+module Harper.Interpreter.Expressions where
 
 import           Harper.Abs
 

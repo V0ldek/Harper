@@ -75,19 +75,18 @@ All other symbols are terminals.
   | //[TopLvlDecl]// | -> | **eps**
   |  |  **|**  | //TopLvlDecl// ``;`` //[TopLvlDecl]// 
   | //TypeHint// | -> | //Ident// ``::`` //TypeExpr// 
-  | //TypeExpr3// | -> | //Ident// 
-  |  |  **|**  | //UIdent// 
+  | //TypeExpr2// | -> | //Ident// 
   |  |  **|**  | //TypePurity// 
   |  |  **|**  | ``()`` 
-  |  |  **|**  | //TypeExpr4// 
-  | //TypeExpr2// | -> | ``(`` //TupleType// ``)`` 
+  |  |  **|**  | ``(`` //TupleType// ``)`` 
   |  |  **|**  | ``{`` //[FieldTypeExpr]// ``}`` 
-  |  |  **|**  | //TypeExpr3// 
-  | //TypeExpr1// | -> | //TypeExpr1// //TypeExpr2// 
+  |  |  **|**  | ``(`` //TypeExpr// ``)`` 
+  | //TypeExpr1// | -> | //UIdent// //[TypeExpr2]// 
   |  |  **|**  | //TypeExpr2// 
   | //TypeExpr// | -> | //TypeExpr1// ``->`` //TypeExpr// 
   |  |  **|**  | //TypeExpr1// 
-  | //TypeExpr4// | -> | ``(`` //TypeExpr// ``)`` 
+  | //[TypeExpr2]// | -> | **eps**
+  |  |  **|**  | //TypeExpr2// //[TypeExpr2]// 
   | //TupleType// | -> | //TypeExpr// ``,`` //TupleType// 
   |  |  **|**  | //TypeExpr// ``,`` //TypeExpr// 
   | //TypePurity// | -> | ``impure`` 
@@ -96,13 +95,13 @@ All other symbols are terminals.
   | //[FieldTypeExpr]// | -> | **eps**
   |  |  **|**  | //FieldTypeExpr// 
   |  |  **|**  | //FieldTypeExpr// ``,`` //[FieldTypeExpr]// 
-  | //FunDecl// | -> | //Ident// //[FunArg]// ``=`` //FunBody// 
-  | //FunArg// | -> | //Ident// 
-  | //[FunArg]// | -> | **eps**
-  |  |  **|**  | //FunArg// //[FunArg]// 
-  | //LambdaArg// | -> | //Pattern// 
-  | //[LambdaArg]// | -> | **eps**
-  |  |  **|**  | //LambdaArg// //[LambdaArg]// 
+  | //FunDecl// | -> | //Ident// //[FunParam]// ``=`` //FunBody// 
+  | //FunParam// | -> | //Ident// 
+  | //[FunParam]// | -> | **eps**
+  |  |  **|**  | //FunParam// //[FunParam]// 
+  | //LambdaParam// | -> | //Pattern// 
+  | //[LambdaParam]// | -> | **eps**
+  |  |  **|**  | //LambdaParam// //[LambdaParam]// 
   | //FunBody// | -> | //Expression// 
   |  |  **|**  | //Statement5// 
   | //BoolLiteral// | -> | ``true`` 
@@ -157,7 +156,7 @@ All other symbols are terminals.
   |  |  **|**  | //Expression3// 
   | //Expression1// | -> | //Expression2// ``|`` //Expression1// 
   |  |  **|**  | //Expression2// 
-  | //Expression// | -> | ``\`` //[LambdaArg]// ``=>`` //FunBody// 
+  | //Expression// | -> | ``\`` //[LambdaParam]// ``=>`` //FunBody// 
   |  |  **|**  | //Expression1// 
   | //TupleExpression// | -> | //Expression11// ``,`` //TupleExpression// 
   |  |  **|**  | //Expression11// ``,`` //Expression11// 
@@ -241,13 +240,13 @@ All other symbols are terminals.
   |  |  **|**  | //Declaration// 
   | //[LocalFunDecl]// | -> | //LocalFunDecl// ``;`` 
   |  |  **|**  | //LocalFunDecl// ``;`` //[LocalFunDecl]// 
-  | //TypeSignature// | -> | //UIdent// //[TypeArgument]// 
+  | //TypeSignature// | -> | //UIdent// //[TypeParameter]// 
   | //TypeDecl// | -> | ``value`` //TypeSignature// ``=`` ``{`` //TypeBody// ``}`` 
   |  |  **|**  | ``value`` //TypeSignature// ``=`` ``{`` //[TypeVariantDecl]// ``}`` 
   |  |  **|**  | ``ref`` //TypeSignature// ``=`` ``{`` //TypeBody// ``}`` 
-  | //TypeArgument// | -> | //Ident// 
-  | //[TypeArgument]// | -> | **eps**
-  |  |  **|**  | //TypeArgument// //[TypeArgument]// 
+  | //TypeParameter// | -> | //Ident// 
+  | //[TypeParameter]// | -> | **eps**
+  |  |  **|**  | //TypeParameter// //[TypeParameter]// 
   | //TypeVariantDecl// | -> | ``variant`` //UIdent// ``=`` ``{`` //TypeBody// ``}`` 
   | //[TypeVariantDecl]// | -> | //TypeVariantDecl// ``;`` 
   |  |  **|**  | //TypeVariantDecl// ``;`` //[TypeVariantDecl]// 

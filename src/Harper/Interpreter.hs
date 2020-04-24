@@ -1,4 +1,4 @@
-module Harper.Engine
+module Harper.Interpreter
     ( runInterpreter
     , eval
     , apply
@@ -14,27 +14,28 @@ import           Data.Maybe
 import           Data.List
 
 import           Harper.Abs
+import           Harper.Alloc
 import           Harper.Printer
-import           Harper.Engine.Alloc
-import           Harper.Engine.Conditionals
-import           Harper.Engine.Core
-import           Harper.Engine.Declarations
-import           Harper.Engine.Error            ( raise )
-import qualified Harper.Engine.Error           as Error
-import           Harper.Engine.Expressions
-import           Harper.Engine.Output
-import           Harper.Engine.Snapshots
-import           Harper.Engine.Thunk
+import           Harper.Interpreter.Conditionals
+import           Harper.Interpreter.Core
+import           Harper.Interpreter.Declarations
+import           Harper.Interpreter.Expressions
+import           Harper.Interpreter.Snapshots
+import           Harper.Interpreter.Thunk
+import qualified Harper.Error                  as Error
+import           Harper.Output
+import           Harper.TypeSystem.Core         ( TypeCtor(..) )
 import           OutputM
 
-runInterpreter :: Program Pos -> HarperOutput Object
-runInterpreter tree =
-    evalStateT (runReaderT (interpret tree) (Env Map.empty Map.empty)) Map.empty
+runInterpreter :: Program Pos -> TEnv -> HarperOutput Object
+runInterpreter tree tenv =
+    evalStateT (runReaderT (interpret tree) (Env Map.empty tenv)) Map.empty
 
 interpret :: Program Pos -> Interpreter Object
 interpret (Prog _ ds) = do
-    env <- topLvlDecls ds
-    local (const env) (eval $ ObjExpr Nothing (Ident "main"))
+    let fds = [ fd | TopLvlFDecl _ fd <- ds ]
+    env <- funDecls fds
+    localObjs (const env) (eval $ ObjExpr Nothing (Ident "main"))
 
 fBodyToStmt :: FunBody Pos -> Statement Pos
 fBodyToStmt (FStmtBody _ s) = s
@@ -56,9 +57,10 @@ eval (  LitExpr _ (UnitLit _           )) = return PUnit
 eval e@(VCtorExpr _ ctor flds           ) = do
     lookup <- asks (Map.lookup ctor . types)
     case lookup of
-        Just t@VType { flds = fldIs } -> do
+        Just t@TypeCtor { flds = fldMap } -> do
             _data <- mapM fldAssToData flds
             let dataIs      = Set.fromList $ map fst _data
+                fldIs       = Map.keysSet fldMap
                 notDeclared = fldIs Set.\\ dataIs
                 excess      = dataIs Set.\\ fldIs
             unless (Set.null notDeclared)
@@ -109,7 +111,7 @@ eval (LamExpr a params body) = do
     env <- asks objs
     let n     = length params
         ps    = newvars n env
-        pats  = [ p | LamArg _ p <- params ]
+        pats  = [ p | LamParam _ p <- params ]
         body' = genMatchChain (zip ps pats) (fBodyToStmt body)
     return $ Fun ps body' env
   where

@@ -1,4 +1,4 @@
-module Harper.Engine.Core where
+module Harper.Interpreter.Core where
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
@@ -7,19 +7,19 @@ import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 
 import           Harper.Abs
+import           Harper.Output
+import           Harper.TypeSystem.Core         ( TypeCtor(..) )
 import           OutputM
 
 type Ptr = Int
 
 type OEnv = Map.Map Ident Ptr
-type TEnv = Map.Map UIdent Type
 type Store = Map.Map Ptr Object
+type TEnv = Map.Map UIdent TypeCtor
 data Env = Env { objs :: OEnv,
                  types :: TEnv } deriving (Show, Eq)
 
 type Interpreter a = ReaderT Env (StateT Store (Output ShowS)) a
-
-data Type = VType { name :: UIdent, ctor :: UIdent, flds :: Set.Set Ident } deriving Eq
 
 data Object = Fun { params :: [Ident],
                     body :: Statement Pos,
@@ -27,7 +27,7 @@ data Object = Fun { params :: [Ident],
             | Thunk { expr :: Expression Pos,
                       env :: OEnv,
                       this :: Maybe Ptr }
-            | Value { _type :: Type, _data :: OEnv }
+            | Value { _type :: TypeCtor, _data :: OEnv }
             | Var   { ptr :: Maybe Ptr }
             | PInt Integer
             | PBool Bool
@@ -35,12 +35,6 @@ data Object = Fun { params :: [Ident],
             | PChar Char
             | PUnit
             deriving Eq
-
-instance Show Type where
-  show t =
-    let UIdent i = name t
-        UIdent c = ctor t
-    in  i ++ "." ++ c
 
 instance Show Object where
   show (PInt  n    ) = show n
@@ -78,15 +72,6 @@ objType (Value t _   ) = show t
 objType (Var (Just o)) = "Variable"
 objType _              = "undefined"
 
-newlocs :: Int -> Store -> [Ptr]
-newlocs n s = case Map.lookupMax s of
-  Just (l, _) -> genLocsFrom (l + 1)
-  Nothing     -> genLocsFrom 0
-  where genLocsFrom l = [l .. l + n - 1]
-
-newloc :: Store -> Ptr
-newloc st = let [l] = newlocs 1 st in l
-
 -- Unspeakable name specifically chosen to be greater than all speakable names.
 varKey :: String
 varKey = "~var"
@@ -101,3 +86,6 @@ newvars n env = case Map.lookupMax env of
 
 newvar :: OEnv -> Ident
 newvar env = let [var] = newvars 1 env in var
+
+raise :: HarperOutput a -> Interpreter a
+raise = lift . lift

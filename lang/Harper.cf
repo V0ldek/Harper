@@ -17,16 +17,16 @@ terminator TopLvlDecl ";" ;
 
 THint. TypeHint ::= Ident "::" TypeExpr ;
 
-TVar.   TypeExpr3  ::= Ident ;
-TCtor.  TypeExpr3  ::= UIdent ;
-TPur.   TypeExpr3  ::= TypePurity ;
-TUnit.  TypeExpr3  ::= "()" ;
+TVar.   TypeExpr2  ::= Ident ;
+TPur.   TypeExpr2  ::= TypePurity ;
+TUnit.  TypeExpr2  ::= "()" ;
 TTup.   TypeExpr2  ::= "(" TupleType ")" ;
 TAdHoc. TypeExpr2  ::= "{" [FieldTypeExpr] "}" ;
-TApp.   TypeExpr1  ::= TypeExpr1 TypeExpr2 ;
+TCtor.  TypeExpr1  ::= UIdent [TypeExpr2] ;
 TFun.   TypeExpr  ::= TypeExpr1 "->" TypeExpr ;
 
-coercions TypeExpr 4 ;
+separator TypeExpr2 "";
+coercions TypeExpr 2 ;
 
 TTupList. TupleType ::= TypeExpr "," TupleType ;
 TTupTail. TupleType ::= TypeExpr "," TypeExpr ;
@@ -39,13 +39,13 @@ separator FieldTypeExpr "," ;
 
 -- Functions
 
-FDecl. FunDecl ::= Ident [FunArg] "=" FunBody ;
+FDecl. FunDecl ::= Ident [FunParam] "=" FunBody ;
 
-FArg. FunArg ::= Ident ;
-separator FunArg "" ;
+FParam. FunParam ::= Ident ;
+separator FunParam "" ;
 
-LamArg. LambdaArg ::= Pattern ;
-separator LambdaArg "" ;
+LamParam. LambdaParam ::= Pattern ;
+separator LambdaParam "" ;
 
 FExprBody. FunBody ::= Expression ;
 FStmtBody. FunBody ::= Statement5 ;
@@ -111,7 +111,7 @@ OrExpr.    Expression2 ::= Expression2 "or" Expression3 ;
 
 SeqExpr.   Expression1 ::= Expression2 "|" Expression1 ;
 
-LamExpr.   Expression ::= "\\" [LambdaArg] "=>" FunBody ;
+LamExpr.   Expression ::= "\\" [LambdaParam] "=>" FunBody ;
 
 coercions Expression 12;
 
@@ -228,14 +228,14 @@ terminator nonempty LocalFunDecl ";" ;
 
 -- Type declarations.
 
-TSig. TypeSignature ::= UIdent [TypeArgument] ;
+TSig. TypeSignature ::= UIdent [TypeParameter] ;
 
 ValTDecl.  TypeDecl ::= "value" TypeSignature "=" "{" TypeBody "}" ;
 ValTUDecl. TypeDecl ::= "value" TypeSignature "=" "{" [TypeVariantDecl] "}" ;
 RefTDecl.   TypeDecl ::= "ref" TypeSignature "=" "{" TypeBody "}" ;
 
-TArg. TypeArgument ::= Ident ;
-separator TypeArgument "" ;
+TParam. TypeParameter ::= Ident ;
+separator TypeParameter "" ;
 
 TVarDecl. TypeVariantDecl ::= "variant" UIdent "=" "{" TypeBody "}";
 terminator nonempty TypeVariantDecl ";" ;

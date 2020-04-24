@@ -1,10 +1,10 @@
-module Harper.Engine.Conditionals
+module Harper.Interpreter.Conditionals
     ( linearizeCond
     )
 where
 
 import           Harper.Abs
-import           Harper.Engine.Expressions
+import           Harper.Interpreter.Expressions
 
 -- Turns a conditional statement into a linear conditional statement.
 -- Linear means a list of if statements where we assume that the first if with a true predicate
