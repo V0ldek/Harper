@@ -156,22 +156,10 @@ assToValue i ctx = do
         ctx
     runtimeErr
 
-invAss :: (Position p) => String -> Ident -> Statement p -> HarperOutput a
-invAss t i ctx = do
-    outputErr
-        ( ("cannot assign to `" ++)
-        . showsPrt i
-        . ("`, which is a value of type '" ++)
-        . (t ++)
-        . ("'." ++)
-        )
-        ctx
-    runtimeErr
-
 undeclaredIdent :: (Print p, Position p) => Ident -> p -> HarperOutput a
 undeclaredIdent i ctx = do
     outputErr (("undeclared identifier `" ++) . showsPrt i . ("`." ++)) ctx
-    runtimeErr
+    typeErr
 
 unassVar :: (Print p, Position p) => Ident -> p -> HarperOutput a
 unassVar i ctx = do
@@ -191,7 +179,7 @@ invFldAcc t i ctx = do
         (("type '" ++) . shows t . ("' has no field `" ++) . shows i . ("`." ++)
         )
         ctx
-    runtimeErr
+    typeErr
 
 unassFlds :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 unassFlds t is ctx = do
@@ -204,7 +192,7 @@ unassFlds t is ctx = do
         . ("`." ++)
         )
         ctx
-    runtimeErr
+    typeErr
     where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
 
 excessFlds
@@ -218,7 +206,7 @@ excessFlds t is ctx = do
         . ("`." ++)
         )
         ctx
-    runtimeErr
+    typeErr
     where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
 
 conflTypeNames

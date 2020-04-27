@@ -61,16 +61,16 @@ eval e@(VCtorExpr _ ctor flds           ) = do
     case lookup of
         Just t@TypeCtor { flds = fldMap } -> do
             _data <- mapM fldAssToData flds
-            let dataIs      = Set.fromList $ map fst _data
-                fldIs       = Map.keysSet fldMap
-                notDeclared = fldIs Set.\\ dataIs
-                excess      = dataIs Set.\\ fldIs
-            unless (Set.null notDeclared)
-                   (raise $ Error.unassFlds t (Set.toList notDeclared) e)
-            unless (Set.null excess)
-                   (raise $ Error.excessFlds t (Set.toList excess) e)
-            return $ Value t (Map.fromList _data)
-        Nothing -> raise $ Error.undeclaredCtor ctor e
+            if Set.fromList (map fst _data) /= Map.keysSet fldMap
+                then
+                    error
+                    $ "Invalid data ass in vctor. Type check should've caught this."
+                    ++ show e
+                else return $ Value t (Map.fromList _data)
+        Nothing ->
+            error
+                $  "Undeclared ctor. Type check should've caught this."
+                ++ show e
   where
     fldAssToData (DataAss _ i e) = do
         t <- emplaceThunk e
@@ -84,7 +84,10 @@ eval e@(ObjExpr _ i) = do
         Just l -> do
             o <- gets (Map.! l)
             evalObj o
-        Nothing -> raise $ Error.undeclaredIdent i e
+        Nothing ->
+            error
+                $  "Undeclared ident. Type check should've caught this."
+                ++ show e
   where
     evalObj o = case o of
         Var (Just ptr) -> do
@@ -144,7 +147,10 @@ eval e'@(NegExpr a e) = do
     o <- eval e
     case o of
         PInt n -> return $ PInt (-n)
-        _      -> error $ "Invalid type in negation. Type check should have caught this. " ++ show e'
+        _ ->
+            error
+                $ "Invalid type in negation. Type check should have caught this. "
+                ++ show e'
 
 -- Equations.
 
@@ -169,8 +175,15 @@ eval e@(AndExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _        -> error $ "Invalid type in and expression. Type check should have caught this. " ++ show e
-        _ -> raise $ error $ "Invalid type in and expression. Type check should have caught this. " ++ show e
+                    _ ->
+                        error
+                            $ "Invalid type in and expression. Type check should have caught this. "
+                            ++ show e
+        _ ->
+            raise
+                $ error
+                $ "Invalid type in and expression. Type check should have caught this. "
+                ++ show e
 eval e@(OrExpr _ e1 e2) = do
     o1 <- eval e1
     case o1 of
@@ -180,13 +193,22 @@ eval e@(OrExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _        -> error $ "Invalid type in or expression. Type check should have caught this. " ++ show e
-        _ -> error $ "Invalid type in or expression. Type check should have caught this. " ++ show e
+                    _ ->
+                        error
+                            $ "Invalid type in or expression. Type check should have caught this. "
+                            ++ show e
+        _ ->
+            error
+                $ "Invalid type in or expression. Type check should have caught this. "
+                ++ show e
 eval e'@(NotExpr _ e) = do
     o <- eval e
     case o of
         PBool b -> return $ PBool $ not b
-        _       -> error $ "Invalid type in not expression. Type check should have caught this. " ++ show e
+        _ ->
+            error
+                $ "Invalid type in not expression. Type check should have caught this. "
+                ++ show e
 
 eval e =
     error ("Evaluating this type of values is not implemented yet: " ++ show e)
@@ -198,10 +220,13 @@ apply (Fun (p : ps) s env) argV = do
     case ps of
         [] -> localObjs (const env') (call s)
         _  -> return $ Fun ps s env'
-apply _ argV = error $ "Overapplication at runtime. Type check should have caught this. " ++ show argV
+apply _ argV =
+    error
+        $  "Overapplication at runtime. Type check should have caught this. "
+        ++ show argV
 
 call :: Statement Meta -> Interpreter Object
-call s = exec s return f where f = raise $ Error.noRet s
+call s = exec s return f where f = return PUnit
 
 -- Execution uses continuation-passing-style to implement control flow. 
 -- Since statements can only be executed in a body of a function, they take at least two continuations:
@@ -212,16 +237,16 @@ exec
     -> (Object -> Interpreter a)
     -> Interpreter a
     -> Interpreter a
-exec (EmptyStmt _         ) _    k = k
-exec (StmtBlock _ []      ) _    k = k
+exec (EmptyStmt _           ) _    k = k
+exec (StmtBlock   _ []      ) _    k = k
 exec (StmtBlock a (s : ss)) kRet k = exec s kRet (exec (StmtBlock a ss) kRet k)
 
 -- Control flow.
 
-exec (RetExprStmt _ e) kRet _ = do
+exec (RetExprStmt _ e       ) kRet _ = do
     o <- eval e
     kRet o
-exec (RetStmt _           ) kRet _ = kRet PUnit
+exec (RetStmt _   ) kRet _ = kRet PUnit
 exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
   where
     -- Executes a linear conditional. 
@@ -232,13 +257,19 @@ exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
         case o of
             PBool True  -> exec stmt kRet k
             PBool False -> execIfs ifs kRet k
-            _           -> error $ "Invalid type of if predicate. Type check should have caught this. " ++ show c
+            _ ->
+                error
+                    $ "Invalid type of if predicate. Type check should have caught this. "
+                    ++ show c
 exec w@(WhileStmt _ pred s) kRet k = do
     o <- eval pred
     case o of
         PBool True  -> exec s kRet (exec w kRet k)
         PBool False -> k
-        _           -> error $ "Invalid type of while predicate. Type check should have caught this. " ++ show w
+        _ ->
+            error
+                $ "Invalid type of while predicate. Type check should have caught this. "
+                ++ show w
 exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
   where
     execMatches e (MatchStmtClause _ p s : cs) =
@@ -251,7 +282,7 @@ exec (DeclStmt _ decl) _ k = do
     oenv <- declLocalUnass decl
     localObjs (const oenv) k
 exec (DconStmt _ (PatDecl _ decl) e) _ k = do
-    val <- emplaceThunk e
+    val  <- emplaceThunk e
     oenv <- declLocal' decl (fromJust $ this val)
     localObjs (const oenv) k
 
@@ -267,9 +298,18 @@ exec s@(AssStmt _ i e) kRet k = do
                     val <- emplaceThunk e
                     modify (Map.insert l (Var $ this val))
                     k
-                Thunk{} -> raise $ Error.assToValue i s
-                o       -> raise $ Error.invAss (objType o) i s
-        Nothing -> raise $ Error.undeclaredIdent i s
+                Thunk{} ->
+                    error
+                        $ "Invalid assignment. Type check should've caught this."
+                        ++ show s
+                o ->
+                    error
+                        $ "Invalid assignment. Type check should've caught this."
+                        ++ show s
+        Nothing ->
+            error
+                $  "Undeclared ident. Type check should've caught this."
+                ++ show s
 exec (AddStmt p i e) kRet k =
     exec (AssStmt p i (AddExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 exec (SubStmt p i e) kRet k =
@@ -299,7 +339,10 @@ evalIntBinOp e = do
         (PInt n1, PInt n2) -> do
             when (cfz && n2 == 0) (raise $ Error.divByZero e2 e)
             return $ PInt $ n1 `op` n2
-        _ -> error $ "Invalid type in binary integer operator. Type check should have caught this. " ++ show e
+        _ ->
+            error
+                $ "Invalid type in binary integer operator. Type check should have caught this. "
+                ++ show e
 
 evalEqOp :: Expression Meta -> Interpreter Object
 evalEqOp e = do
@@ -315,7 +358,10 @@ evalEqOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 == s2
         (PChar c1, PChar c2) -> f $ c1 == c2
         (PUnit   , PUnit   ) -> f True
-        _ -> error $ "Invalid types in eq operator. Type check should have caught this. " ++ show e
+        _ ->
+            error
+                $ "Invalid types in eq operator. Type check should have caught this. "
+                ++ show e
 
 evalCmpOp :: Expression Meta -> Interpreter Object
 evalCmpOp e = do
@@ -332,7 +378,10 @@ evalCmpOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 `compare` s2
         (PChar c1, PChar c2) -> f $ c1 `compare` c2
         (PUnit   , PUnit   ) -> f EQ
-        _ -> error $ "Invalid types in cmp operator. Type check should have caught this. " ++ show e
+        _ ->
+            error
+                $ "Invalid types in cmp operator. Type check should have caught this. "
+                ++ show e
 
 evalThunk :: Object -> Interpreter Object
 evalThunk (Thunk e env ptr) = do
@@ -390,7 +439,10 @@ patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
             Just l -> do
                 o <- gets (Map.! l)
                 patMatch' p o (matchFlds v flds kMatch kElse) kElse
-            Nothing -> raise $ Error.invFldAcc t i p
+            Nothing ->
+                error
+                    $  "Invalid fld access. Type check should've caught this."
+                    ++ show p
     matchFlds v [] kMatch _ = kMatch
 patMatch' p _ _ _ =
     error $ "Pattern matching this type of patterns is unsupported: " ++ show p

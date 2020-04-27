@@ -14,9 +14,9 @@ import           OutputM
 
 type TEnv = Map.Map Ident Type
 type OEnv = Map.Map Ident Type
-type DAss = Set.Set Ident
 type Ctors = Map.Map UIdent TypeCtor
-data Store = St { rets :: [Maybe Type], defAss :: DAss, varSrc :: Int, tCtors :: Ctors }
+data Store = St { blkSt :: BlockState, varSrc :: Int, tCtors :: Ctors }
+data BlockState = BlkSt { reachable :: Bool, rets :: [Type]  } deriving Show
 
 data Env = Env { objs :: OEnv,
                  types :: TEnv } deriving (Show, Eq)
@@ -44,7 +44,7 @@ instance Show Type where
     showsPrec p (FType pt rt) =
         showParen (p > 10) (showsPrec 11 pt . (" -> " ++) . showsPrec 11 rt)
     showsPrec p (TypeVar   i) = showsPrt i
-    showsPrec p (TypeBound i) = showsPrt i . ("&"++)
+    showsPrec p (TypeBound i) = showsPrt i . ("&" ++)
     showsPrec p (PType     i) = showsPrt i
 
 instance Show TypeCtor where
@@ -61,12 +61,6 @@ localTypes f = local $ liftTypes f
 
 localObjs :: (OEnv -> OEnv) -> TypeChecker a -> TypeChecker a
 localObjs f = local $ liftObjs f
-
-modifyRets :: ([Maybe Type] -> [Maybe Type]) -> TypeChecker ()
-modifyRets f = modify (\st -> st { rets = f $ rets st })
-
-modifyDefAss :: (DAss -> DAss) -> TypeChecker ()
-modifyDefAss f = modify (\st -> st { defAss = f $ defAss st })
 
 modifyVarSrc :: (Int -> Int) -> TypeChecker ()
 modifyVarSrc f = modify (\st -> st { varSrc = f $ varSrc st })

@@ -27,7 +27,7 @@ runTypeChecker
     -> HarperOutput (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
 runTypeChecker tree = evalStateT
     (runReaderT (typeCheck tree) (Env Map.empty Map.empty))
-    (St [] Set.empty 0 Map.empty)
+    (St (BlkSt True []) 0 Map.empty)
 
 typeCheck
     :: Program Pos
@@ -357,7 +357,7 @@ annotateAppExpr e a e1 e2 = do
     case t1 of
         FType p r -> case unify p t2 of
             Just subst -> return (annWith (apply subst r) a, e1', e2')
-            Nothing -> raise $ Error.invType t2 p e2 e
+            Nothing    -> raise $ Error.invType t2 p e2 e
         _ -> raise $ Error.invApp t1 e
 
 annotateMatchExprClause
@@ -429,20 +429,25 @@ annotateBody body = case body of
 annotateStmtBody
     :: Statement Pos -> TypeChecker (Statement (TypeMetaData Pos), Type)
 annotateStmtBody s = do
-    s'   <- analStmt s
-    rets <- consumeRets
-    t    <- unifyRets rets
+    clearBlkSt
+    (s', bodySt) <- blockScope (analStmt s)
+    t            <- unifyRets (reachable bodySt) (rets bodySt)
     return (s', t)
   where
-    unifyRets rets = do
-        ret' <- unifyRets' (catMaybes rets)
-        if any isNothing rets && ret' /= unitT
-            then raise $ Error.noRet s
-            else return ret'
-    unifyRets' []   = return unitT
-    unifyRets' rets = case unifys rets of
-        Just subst -> return $ apply subst (head rets)
-        Nothing    -> raise $ Error.conflRetTypes rets s
+    unifyRets reachable []
+        | reachable
+        = return unitT
+        | otherwise
+        = error
+            $ "End of function body is unreachable but there are no return types. This should be impossible: "
+            ++ show s
+    unifyRets reachable rets = case unifys rets of
+        Just subst ->
+            let ret = apply subst (head rets)
+            in  if reachable && ret /= unitT
+                    then raise $ Error.noRet s
+                    else return ret
+        Nothing -> raise $ Error.conflRetTypes rets s
 
 analStmt :: Statement Pos -> TypeChecker (Statement (TypeMetaData Pos))
 analStmt (EmptyStmt a         ) = return $ EmptyStmt (annWith unitT a)
@@ -450,8 +455,7 @@ analStmt (StmtBlock a []      ) = return $ StmtBlock (annWith unitT a) []
 analStmt (StmtBlock a (s : ss)) = case s of
     (DeclStmt a decl) -> do
         (decl', oenv) <- declare decl
-        let i = declI decl
-        blk <- scopeObjs [i] oenv (analStmt $ StmtBlock a ss)
+        blk           <- localObjs (Map.union oenv) (analStmt $ StmtBlock a ss)
         let StmtBlock _ ss' = blk
         return $ StmtBlock (annWith unitT a)
                            (DeclStmt (annWith unitT a) decl' : ss')
@@ -462,8 +466,6 @@ analStmt (StmtBlock a (s : ss)) = case s of
             t2 = typ e'
         if canUnify t1 t2
             then do
-                let vars = patDeclIs pat
-                modifyDefAss (Set.union (Set.fromList vars))
                 blk <- localObjs (Map.union oenv) (analStmt (StmtBlock a ss))
                 let StmtBlock _ ss' = blk
                 return $ StmtBlock
@@ -481,58 +483,97 @@ analStmt (StmtBlock a (s : ss)) = case s of
 analStmt (RetExprStmt a e) = do
     e' <- annotateExpr e
     let t = typ e'
-    addRetT t
+    addRet t
+    unreachable
     return $ RetExprStmt (annWith t a) e'
 analStmt (RetStmt a) = do
-    addRetT unitT
+    addRet unitT
+    unreachable
     return $ RetStmt (annWith unitT a)
 analStmt (CondStmt a (IfElifStmts a' _if elifs)) = do
-    -- If there is no `else` statement, we discard all information about definite assignment from the branches
-    -- since control might not enter any of them at runtime.
-    (if', _) <- scopeDefAss (analIf _if)
-    elifRes  <- mapM (scopeDefAss . analElif) elifs
-    let (elifs', _) = unzip elifRes
+    (if', afterIf) <- blockScope (analIf _if)
+    elifRes        <- mapM (blockScope . analElif) elifs
+    let (elifs', afterElifs) = unzip elifRes
+    mayEnterOneOf (afterIf : afterElifs)
     return $ CondStmt (annWith unitT a)
                       (IfElifStmts (annWith unitT a') if' elifs')
 analStmt (CondStmt a (IfElifElseStmts a' _if elifs _else)) = do
-    -- If there is an else statement, then one of the branches must be entered into, so if a variable gets
-    -- definitely assigned in all of the branches, it is definitely assigned after the conditional.
-    before         <- gets defAss
-    (if', afterIf) <- scopeDefAss (analIf _if)
-    elifRes        <- mapM (scopeDefAss . analElif) elifs
+    (if', afterIf)     <- blockScope (analIf _if)
+    elifRes            <- mapM (blockScope . analElif) elifs
+    (else', afterElse) <- blockScope (analElse _else)
     let (elifs', afterElifs) = unzip elifRes
-    (else', afterElse) <- scopeDefAss (analElse _else)
-    let after =
-            foldr Set.intersection before (afterIf : afterElse : afterElifs)
-    modifyDefAss (const after)
+    mustEnterOneOf (afterIf : afterElse : afterElifs)
     return $ CondStmt (annWith unitT a)
                       (IfElifElseStmts (annWith unitT a') if' elifs' else')
 analStmt w@(WhileStmt a e s) = do
-    -- While is like an if - we may go past it if the predicate is false, so nothing assigned in its body
-    -- can be considered definitely assigned after the body.
     e' <- annotateExpr e
     let t = typ e'
     if predicate t
         then do
-            (s', _) <- scopeDefAss (analStmt s)
+            (s', after) <- blockScope (analStmt s)
+            mayEnterOneOf [after]
             return $ WhileStmt (annWith unitT a) e' s'
         else raise $ Error.invPredType t e w
 analStmt m@(MatchStmt a e cs) = do
-    -- Since one of the match clauses will always be entered (or a non exhaustive pattern error will be thrown),
-    -- variables definitely assigned in all clauses will be definitely assigned after the whole match statement.
-    before    <- gets defAss
     e'        <- annotateExpr e
-    clauseRes <- mapM (scopeDefAss . annotateMatchStmtClause (typ e')) cs
+    clauseRes <- mapM (blockScope . annotateMatchStmtClause (typ e')) cs
     let (cs', afters) = unzip clauseRes
         typs          = map typ cs' -- Typs is nonempty, since the grammar disallows clauseless match statements.
         subst         = unifys typs
-        after         = foldr Set.intersection before afters
-    modifyDefAss (const after)
+    -- One of the match clauses will always be entered (or a non exhaustive pattern error will be thrown).
+    mustEnterOneOf afters
     case subst of
         Just s  -> return $ MatchStmt (annWith (apply s (head typs)) a) e' cs'
         Nothing -> raise $ Error.conflMatchClauseTypes typs e
 
-analStmt s = error $ "This type of statments is not supported yet: " ++ show s
+-- Declarations.
+
+analStmt d@DeclStmt{} =
+    error
+        $ "Declaration statement outside of a block. Grammar should disallow this:"
+        ++ show d
+analStmt d@DconStmt{} =
+    error
+        $ "Deconstruction statement outside of a block. Grammar should disallow this:"
+        ++ show d
+
+-- Assignment.
+
+analStmt s@(AssStmt a i e) = do
+    e' <- analAss i e s
+    return $ AssStmt (annWith unitT a) i e'
+analStmt s@(AddStmt a i e) = do
+    e' <- analAss i e s
+    return $ AddStmt (annWith unitT a) i e'
+analStmt s@(SubStmt a i e) = do
+    e' <- analAss i e s
+    return $ SubStmt (annWith unitT a) i e'
+analStmt s@(MulStmt a i e) = do
+    e' <- analAss i e s
+    return $ MulStmt (annWith unitT a) i e'
+analStmt s@(DivStmt a i e) = do
+    e' <- analAss i e s
+    return $ DivStmt (annWith unitT a) i e'
+analStmt s@(PowStmt a i e) = do
+    e' <- analAss i e s
+    return $ PowStmt (annWith unitT a) i e'
+
+analAss
+    :: (Print p, Position p)
+    => Ident
+    -> Expression Pos
+    -> p
+    -> TypeChecker (Expression (TypeMetaData Pos))
+analAss i e ctx = do
+    lookup <- asksObjs (Map.lookup i)
+    case lookup of
+        Just t -> do
+            e' <- annotateExpr e
+            let t' = typ e'
+            if canUnify t t'
+                then return e'
+                else raise $ Error.invType t' t e ctx
+        Nothing -> raise $ Error.undeclaredIdent i ctx
 
 annotateMatchStmtClause
     :: Type
@@ -545,7 +586,7 @@ annotateMatchStmtClause t c@(MatchStmtClause a p s) = do
     if canUnify t t'
         then do
             let vars = patDeclIs p
-            s' <- scopeObjs vars oenv (analStmt s)
+            s' <- localObjs (Map.union oenv) (analStmt s)
             return $ MatchStmtClause (annWith unitT a) p' s'
         else raise $ Error.patInvType t' t c
 

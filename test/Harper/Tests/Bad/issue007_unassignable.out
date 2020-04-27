@@ -4,4 +4,4 @@ fun := \ n => n ;
 
 Located at line 8 column 5
 
-Execution terminated with an error: runtime error.
+Execution terminated with an error: type error.

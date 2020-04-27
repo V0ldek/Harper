@@ -4,4 +4,4 @@ During evaluation of:
 
 Located at line 20 column 28
 
-Execution terminated with an error: runtime error.
+Execution terminated with an error: type error.

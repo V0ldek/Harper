@@ -3,6 +3,7 @@ import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Maybe
+import           Data.Monoid
 import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
@@ -10,33 +11,45 @@ import qualified Data.Set                      as Set
 import           Harper.Abs
 import           Harper.TypeSystem.Core
 
-scopeDefAss :: TypeChecker a -> TypeChecker (a, DAss)
-scopeDefAss a = do
-    before <- gets defAss
+instance Semigroup BlockState where
+    (BlkSt reachable1 rets1) <> (BlkSt reachable2 rets2) =
+        BlkSt (reachable1 || reachable2) (rets1 ++ rets2)
+
+instance Monoid BlockState where
+    mempty = BlkSt False []
+
+modifyBlkSt :: (BlockState -> BlockState) -> TypeChecker ()
+modifyBlkSt f = modify (\st -> st { blkSt = f (blkSt st) })
+
+getsBlkSt :: (BlockState -> a) -> TypeChecker a
+getsBlkSt f = gets (f . blkSt)
+
+getBlkSt :: TypeChecker BlockState
+getBlkSt = getsBlkSt id
+
+clearBlkSt :: TypeChecker ()
+clearBlkSt = modifyBlkSt (const (BlkSt True []))
+
+blockScope :: TypeChecker a -> TypeChecker (a, BlockState)
+blockScope a = do
+    before <- getBlkSt
     res    <- a
-    after  <- gets defAss
-    modifyDefAss (const before)
+    after  <- getBlkSt
+    modifyBlkSt (const before)
     return (res, after)
 
-scopeObjs :: [Ident] -> OEnv -> TypeChecker a -> TypeChecker a
-scopeObjs is oenv a = do
-    before <- gets defAss
-    let shadow    = Set.fromList is
-        assBefore = Set.intersection before shadow
-    res   <- localObjs (Map.union oenv) a
-    after <- gets defAss
-    let actAfter = Set.union (after Set.\\ shadow) assBefore
-    modifyDefAss (const actAfter)
-    return res
+addRet :: Type -> TypeChecker ()
+addRet t = modifyBlkSt (\st -> st { rets = t : rets st })
 
-addRetT :: Type -> TypeChecker ()
-addRetT r = modifyRets (Just r :)
+unreachable :: TypeChecker ()
+unreachable = modifyBlkSt (\st -> st { reachable = False })
 
-addEndBlk :: TypeChecker ()
-addEndBlk = modifyRets (Nothing :)
+mayEnterOneOf :: [BlockState] -> TypeChecker ()
+mayEnterOneOf bs = do
+    let b = mconcat bs
+    forM_ (rets b) addRet
 
-consumeRets :: TypeChecker [Maybe Type]
-consumeRets = do
-    rets <- gets rets
-    modifyRets (const [])
-    return rets
+mustEnterOneOf :: [BlockState] -> TypeChecker ()
+mustEnterOneOf bs = do
+    let b = mconcat bs
+    modifyBlkSt (const b)
