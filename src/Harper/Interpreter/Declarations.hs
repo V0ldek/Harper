@@ -11,7 +11,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 
 import           Harper.Abs
-import           Harper.Alloc
+import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Thunk
 

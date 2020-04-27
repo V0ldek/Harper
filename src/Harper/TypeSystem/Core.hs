@@ -12,14 +12,18 @@ import           Harper.Abs.Pos
 import           Harper.Output
 import           OutputM
 
-type TEnv = Map.Map Ident Type
-type OEnv = Map.Map Ident Type
-type Ctors = Map.Map UIdent TypeCtor
-data Store = St { blkSt :: BlockState, varSrc :: Int, tCtors :: Ctors }
-data BlockState = BlkSt { reachable :: Bool, rets :: [Type]  } deriving Show
+type Ptr = Int
+type OEnv = Map.Map Ident Ptr
 
-data Env = Env { objs :: OEnv,
-                 types :: TEnv } deriving (Show, Eq)
+type ObjStore = Map.Map Ptr ObjData
+type CtorStore = Map.Map UIdent TypeCtor
+type TypeStore = Map.Map Ident Type
+
+data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
+data BlockState = BlkSt { reachable :: Bool, rets :: [Type]  } deriving Show
+data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord)
+
+newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 
 data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: Set.Set UIdent }
           | FType { param :: Type, ret :: Type }
@@ -28,7 +32,7 @@ data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: 
           | PType UIdent
           deriving (Eq, Ord)
 
-data TypeCtor = TypeCtor { tname :: UIdent, ctor :: UIdent, flds :: OEnv } deriving (Eq, Ord)
+data TypeCtor = TypeCtor { tname :: UIdent, ctor :: UIdent, flds :: Map.Map Ident ObjData } deriving (Eq, Ord)
 
 type TypeChecker = ReaderT Env (StateT Store (Output ShowS))
 
@@ -53,26 +57,35 @@ instance Show TypeCtor where
 liftObjs :: (OEnv -> OEnv) -> Env -> Env
 liftObjs f env = env { objs = f $ objs env }
 
-liftTypes :: (TEnv -> TEnv) -> Env -> Env
-liftTypes f env = env { types = f $ types env }
-
-localTypes :: (TEnv -> TEnv) -> TypeChecker a -> TypeChecker a
-localTypes f = local $ liftTypes f
-
 localObjs :: (OEnv -> OEnv) -> TypeChecker a -> TypeChecker a
 localObjs f = local $ liftObjs f
+
+modifyObjData :: (ObjStore -> ObjStore) -> TypeChecker ()
+modifyObjData f = modify (\st -> st { objData = f $ objData st })
 
 modifyVarSrc :: (Int -> Int) -> TypeChecker ()
 modifyVarSrc f = modify (\st -> st { varSrc = f $ varSrc st })
 
-getsCtors :: (Ctors -> a) -> TypeChecker a
+getsCtors :: (CtorStore -> a) -> TypeChecker a
 getsCtors f = gets (f . tCtors)
 
-asksTypes :: (TEnv -> a) -> TypeChecker a
-asksTypes f = asks (f . types)
+getsTypes :: (TypeStore -> a) -> TypeChecker a
+getsTypes f = gets (f . types)
 
 asksObjs :: (OEnv -> a) -> TypeChecker a
 asksObjs f = asks (f . objs)
+
+lookupObj :: Ident -> TypeChecker (Maybe ObjData)
+lookupObj i = do
+    l <- asksObjs (Map.lookup i)
+    case l of
+        Just ptr -> do
+            obj <- gets ((Map.! ptr) . objData)
+            return $ Just obj
+        Nothing -> return Nothing
+
+loadTypes :: TypeStore -> TypeChecker ()
+loadTypes t = modify (\st -> st { types = Map.union t (types st) })
 
 -- Unspeakable name.
 varKey :: String

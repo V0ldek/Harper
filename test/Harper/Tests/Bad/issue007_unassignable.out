@@ -1,7 +1,7 @@
-Error: cannot assign to `fun`, which is a value of type 'Function'.
+Error: cannot assign to an immutable value `fun`.
 During evaluation of:
-fun := \ n => n ;
+ fun := \ (n :: Integer)=> n ; 
 
-Located at line 8 column 5
+Located at line 11 column 5
 
 Execution terminated with an error: type error.

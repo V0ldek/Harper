@@ -24,19 +24,25 @@ bindAllVars t =
     let fv = tVars t
     in  apply (Map.fromList (map (\i -> (i, TypeBound i)) fv)) t
 
+bindAllVarsInOEnv :: OEnv -> TypeChecker ()
+bindAllVarsInOEnv oenv = forM_ (Map.elems oenv) bindOne
+  where
+    bindOne ptr = modifyObjData
+        (Map.adjust (\o -> o { objType = bindAllVars (objType o) }) ptr)
+
 asksFreshInst :: UIdent -> TypeChecker (Maybe (TypeCtor, Type))
 asksFreshInst i = do
     luCtor <- getsCtors (Map.lookup i)
     case luCtor of
         Just ctor -> do
-            t <- asksTypes (Map.! uti (tname ctor))
+            t <- getsTypes (Map.! uti (tname ctor))
             let n = length (params t)
             fresh <- newvars n
             let subst = Map.fromList $ zip (params t) (map TypeVar fresh)
             return $ Just (apply subst ctor, apply subst t)
         Nothing -> return Nothing
 
-type Subst = TEnv
+type Subst = Map.Map Ident Type
 
 class Types t where
     apply :: Subst -> t -> t
@@ -52,6 +58,11 @@ instance Types Type where
     tVars (VType _ _ args _) = tVars args
     tVars (FType p r       ) = tVars p `union` tVars r
     tVars t                  = []
+
+instance Types ObjData where
+    apply s (Obj t b) = Obj (apply s t) b
+
+    tVars o = tVars (objType o)
 
 instance Types TypeCtor where
     apply s ctor = ctor { flds = Map.map (apply s) (flds ctor) }

@@ -14,7 +14,7 @@ import           Data.Maybe
 import           Data.List
 
 import           Harper.Abs
-import           Harper.Alloc
+import           Harper.Interpreter.Alloc
 import           Harper.Printer
 import           Harper.Interpreter.Conditionals
 import           Harper.Interpreter.Core

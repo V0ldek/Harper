@@ -1,20 +1,20 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Harper.Alloc where
+module Harper.Interpreter.Alloc where
 import           Control.Monad.State
-import qualified Data.Map                      as Map
+import qualified Data.Map                     as Map
 
 import           Harper.Interpreter.Core
 
-alloc :: (MonadState (Map.Map Int a) m) => a -> m Int
+alloc :: Object -> Interpreter Int
 alloc o = do
     l <- newloc
     modify (Map.insert l o)
     return l
 
-allocs :: (Traversable t, MonadState (Map.Map Int a) m) => t a -> m (t Int)
+allocs :: Traversable t => t Object -> Interpreter (t Int)
 allocs os = forM os alloc
 
-newlocs :: (MonadState (Map.Map Int a) m) => Int -> m [Int]
+newlocs :: Int -> Interpreter [Int]
 newlocs n = do
     lookup <- gets Map.lookupMax
     case lookup of
@@ -22,7 +22,7 @@ newlocs n = do
         Nothing     -> return $ genLocsFrom 0
     where genLocsFrom l = [l .. l + n - 1]
 
-newloc :: (MonadState (Map.Map Int a) m) => m Int
+newloc :: Interpreter Int
 newloc = do
     l <- newlocs 1
     return $ head l

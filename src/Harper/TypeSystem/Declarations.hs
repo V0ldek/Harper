@@ -1,8 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Harper.TypeSystem.Declarations
-    ( typeDecls
+    ( declTypes
     , Declarable(..)
-    , declareList
+    , declares
+    , declareFromList
     , declIs
     , patDeclIs
     )
@@ -13,13 +14,14 @@ import           Control.Monad.Trans
 import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
+import           Data.Traversable
 
 import           Harper.Abs
 import           Harper.Abs.Pos
 import           Harper.Abs.Typed
-import           Harper.Alloc
 import qualified Harper.Error                  as Error
 import           Harper.Output
+import           Harper.TypeSystem.Alloc
 import           Harper.TypeSystem.Core
 import           Harper.Utility
 
@@ -30,16 +32,16 @@ getCtorIdents d@(ValTUDecl _ _ variants) =
 getCtorIdents d =
     error $ "This type of type declarations is not supported yet: " ++ show d
 
-typeDecls :: [TypeDecl Pos] -> TypeChecker TEnv
-typeDecls ds = do
+declTypes :: [TypeDecl Pos] -> TypeChecker ()
+declTypes ds = do
     () <- assertUniqueNames
     () <- assertUniqueCtors
     ts <- mapM declToType ds
-    let tenv = Map.fromList [ (uti i, t) | t@(VType i _ _ _) <- ts ]
-    ctors <- localTypes (Map.union tenv) (mapM declToCtors ds)
-    let cs = Map.fromList [ (ctor c, c) | c <- concat ctors ]
-    modify (\st -> st { tCtors = cs })
-    return tenv
+    let tStore = Map.fromList [ (uti i, t) | t@(VType i _ _ _) <- ts ]
+    loadTypes tStore
+    ctors <- mapM declToCtors ds
+    let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
+    modify (\st -> st { tCtors = ctorStore })
   where
     assertUniqueNames = case mapFromListUnique (zip (map toIdent ds) ds) of
         Right _           -> return ()
@@ -84,13 +86,16 @@ variantToTypeCtor
     :: UIdent -> [Type] -> TypeVariantDecl Pos -> TypeChecker TypeCtor
 variantToTypeCtor tName vars (TVarDecl _ ctor body) = case body of
     DataTBody _ flds _ -> do
-        let tenv = Map.fromList $ zip [ i | TypeVar i <- vars ] vars
-        let fs   = [ f | TFldDecl _ f <- flds ]
+        let fs = [ f | TFldDecl _ f <- flds ]
         case setFromListUnique fs of
             Right _ -> do
-                (_, oenv) <- localTypes (Map.union tenv) (declareList fs)
-                return $ TypeCtor tName ctor oenv
+                oenv <- mapM declToFld fs
+                return $ TypeCtor tName ctor (Map.fromList oenv)
     TBody{} -> return $ TypeCtor tName ctor Map.empty
+  where
+    declToFld (THint _ i texpr) = do
+        t <- parseType texpr
+        return (i, Obj t False)
 
 class Declarable a where
     declare :: a Pos -> TypeChecker (a (TypeMetaData Pos), OEnv)
@@ -99,7 +104,8 @@ class Declarable a where
 instance Declarable TypeHint where
     declare h@(THint _ i tExpr) = do
         t <- parseType tExpr
-        return (annWith t <$> h, Map.fromList [(i, t)])
+        l <- alloc (Obj t False)
+        return (annWith t <$> h, Map.fromList [(i, l)])
 
     declI (THint _ i _) = i
 
@@ -115,7 +121,11 @@ instance Declarable Declaration where
 instance Declarable LocalObjDecl where
     declare (LocVarDecl a decl) = do
         (decl', env) <- declare decl
+        forM_ (Map.elems env) markAssignable
         return (LocVarDecl (annWith (typ decl') a) decl', env)
+      where
+        markAssignable l =
+            modifyObjData (Map.adjust (\o -> o { assignable = True }) l)
     declare (LocValDecl a decl) = do
         (decl', env) <- declare decl
         return (LocValDecl (annWith (typ decl') a) decl', env)
@@ -123,11 +133,20 @@ instance Declarable LocalObjDecl where
     declI (LocVarDecl _ decl) = declI decl
     declI (LocValDecl _ decl) = declI decl
 
-declareList
+declares
     :: Declarable a => [a Pos] -> TypeChecker ([a (TypeMetaData Pos)], OEnv)
-declareList as = do
+declares as = do
     res <- mapM declare as
     return (map fst res, foldl' (\o (_, o') -> Map.union o' o) Map.empty res)
+
+declareFromList :: [(Ident, Type)] -> TypeChecker OEnv
+declareFromList xs = do
+    xs' <- mapM declareOne xs
+    return $ Map.fromList xs'
+  where
+    declareOne (i, t) = do
+        l <- alloc (Obj t False)
+        return (i, l)
 
 declIs :: Declarable a => [a b] -> [Ident]
 declIs = map declI
@@ -150,7 +169,7 @@ parseType (  TFun _ e1 e2) = do
     r <- parseType e2
     return $ FType p r
 parseType e@(TApp _ u es) = do
-    lookup <- asksTypes (Map.lookup $ uti u)
+    lookup <- getsTypes (Map.lookup $ uti u)
     let n = length es
     case lookup of
         Just t@(VType _ params _ c) -> if length params /= n

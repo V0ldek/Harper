@@ -26,8 +26,8 @@ runTypeChecker
     :: Program Pos
     -> HarperOutput (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
 runTypeChecker tree = evalStateT
-    (runReaderT (typeCheck tree) (Env Map.empty Map.empty))
-    (St (BlkSt True []) 0 Map.empty)
+    (runReaderT (typeCheck tree) (Env Map.empty))
+    (St (BlkSt True []) 0 Map.empty Map.empty Map.empty)
 
 typeCheck
     :: Program Pos
@@ -36,13 +36,12 @@ typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
-    tenv <- localTypes (const globalTypes) (typeDecls tds)
-    let tenv' = Map.union globalTypes tenv
-    (fts', oenv) <- localTypes (const tenv') (declareList fts)
-    let env = Env oenv tenv'
-    fs'  <- mapM (local (const env) . annotate) fs
-    cenv <- gets tCtors
-    return (toProg ds fts' fs', cenv)
+    loadTypes globalTypes
+    declTypes tds
+    (fts', oenv) <- declares fts
+    fs'          <- mapM (localObjs (const oenv) . annotate) fs
+    ctors        <- gets tCtors
+    return (toProg ds fts' fs', ctors)
   where
     toProg
         :: [TopLvlDecl Pos]
@@ -57,9 +56,9 @@ typeCheck p@(Prog a ds) = do
 
 annotate :: FunDecl Pos -> TypeChecker (FunDecl (TypeMetaData Pos))
 annotate d@(FDecl a i params body) = do
-    lookup <- asksObjs (Map.lookup i)
+    lookup <- lookupObj i
     case lookup of
-        Just t@FType{} ->
+        Just Obj { objType = t@FType{} } ->
             let (n1, n2) = (arity t, length params)
             in
                 if n1 < n2
@@ -67,9 +66,8 @@ annotate d@(FDecl a i params body) = do
                     else do
                         let t'@(FType p r) = bindAllVars t
                         (params', tBody) <- uncurryType t' params
-                        let
-                            paramEnv = Map.fromList
-                                [ (i, typ p) | p@(FParam _ i) <- params' ]
+                        paramEnv         <- declareFromList
+                            [ (i, typ p) | p@(FParam _ i) <- params' ]
                         body' <- localObjs (Map.union paramEnv)
                                            (annotateBody body)
                         let tBody' = typ body'
@@ -78,14 +76,15 @@ annotate d@(FDecl a i params body) = do
                             then return
                                 $ FDecl (annWith unitT a) i params' body'
                             else raise $ Error.funInvType i t t'' d
-        Just t | null params -> do
+        Just o | null params -> do
             body' <- annotateBody body
-            let t'  = bindAllVars t
+            let t   = objType o
+                t'  = bindAllVars t
                 t'' = typ body'
             if canUnify t' t''
                 then return $ FDecl (annWith unitT a) i [] body'
                 else raise $ Error.funInvType i t t'' d
-        Just t  -> raise $ Error.nonFunDeclWithParams i t d
+        Just o  -> raise $ Error.nonFunDeclWithParams i (objType o) d
         Nothing -> raise $ Error.funWOutType i d
   where
     uncurryType (FType tParam r) (FParam a i : ps) = do
@@ -138,7 +137,7 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
           where
             annotateFld (DataAss a i e') = do
                 e'' <- annotateExpr e'
-                let t  = flds Map.! i
+                let t  = objType $ flds Map.! i
                     t' = typ e''
                 case unify t' t of
                     Just subst -> return (DataAss (annWith t a) i e'', subst)
@@ -148,9 +147,9 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
 -- Object access.
 
 annotateExpr e@(ObjExpr a i) = do
-    lookup <- asksObjs (Map.lookup i)
+    lookup <- lookupObj i
     case lookup of
-        Just t  -> return $ ObjExpr (annWith t a) i
+        Just o  -> return $ ObjExpr (annWith (objType o) a) i
         Nothing -> raise $ Error.undeclaredIdent i e
 
 -- Function application.
@@ -383,9 +382,9 @@ annotatePat p@(PatLit a l) = do
     return (PatLit (annWith t' a) l', Map.empty)
 annotatePat p@(PatDecl a decl) = do
     (decl', oenv) <- declare decl
-    let t'    = bindAllVars (typ decl')
-        oenv' = Map.map bindAllVars oenv
-    return (PatDecl (annWith t' a) decl', oenv')
+    let t' = bindAllVars (typ decl')
+    bindAllVarsInOEnv oenv
+    return (PatDecl (annWith t' a) decl', oenv)
 annotatePat p@(PatCtor a i flds) = do
     cInst <- asksFreshInst i
     case cInst of
@@ -405,9 +404,10 @@ annotatePat p@(PatCtor a i flds) = do
   where
     annotateFldPattern ctor@(TypeCtor tName _ ctorFlds) e@(PatFld a i p') =
         case Map.lookup i ctorFlds of
-            Just t' -> do
+            Just fld -> do
                 (p'', env) <- annotatePat p'
-                let t'' = typ p''
+                let t'  = objType fld
+                    t'' = typ p''
                 case unify t' t'' of
                     Just subst ->
                         return
@@ -565,14 +565,16 @@ analAss
     -> p
     -> TypeChecker (Expression (TypeMetaData Pos))
 analAss i e ctx = do
-    lookup <- asksObjs (Map.lookup i)
+    lookup <- lookupObj i
     case lookup of
-        Just t -> do
+        Just o | assignable o -> do
             e' <- annotateExpr e
-            let t' = typ e'
+            let t  = objType o
+                t' = typ e'
             if canUnify t t'
                 then return e'
                 else raise $ Error.invType t' t e ctx
+        Just o  -> raise $ Error.assToValue i ctx
         Nothing -> raise $ Error.undeclaredIdent i ctx
 
 annotateMatchStmtClause

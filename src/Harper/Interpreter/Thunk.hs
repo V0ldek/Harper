@@ -4,7 +4,7 @@ import Control.Monad.State
 import qualified Data.Map as Map
 
 import Harper.Abs
-import Harper.Alloc
+import Harper.Interpreter.Alloc
 import Harper.Interpreter.Core
 import Harper.Interpreter.Snapshots
 

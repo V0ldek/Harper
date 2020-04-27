@@ -128,7 +128,8 @@ invApp t1 ctx = do
 noRet :: (Position p) => Statement p -> HarperOutput a
 noRet s = do
     outputErr
-        ("control may reach the end of a non Unit valued function without a return statement." ++)
+        ("control may reach the end of a non Unit valued function without a return statement." ++
+        )
         s
     typeErr
 
@@ -146,15 +147,15 @@ divByZero e ctx = do
         ctx
     runtimeErr
 
-assToValue :: (Position p) => Ident -> Statement p -> HarperOutput a
+assToValue :: (Print p, Position p) => Ident -> p -> HarperOutput a
 assToValue i ctx = do
     outputErr
-        ( ("cannot assign to an immutable variable `" ++)
+        ( ("cannot assign to an immutable value `" ++)
         . showsPrt i
         . ("`." ++)
         )
         ctx
-    runtimeErr
+    typeErr
 
 undeclaredIdent :: (Print p, Position p) => Ident -> p -> HarperOutput a
 undeclaredIdent i ctx = do
@@ -350,20 +351,31 @@ conflMatchClauseTypes ts ctx = do
 conflRetTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflRetTypes ts ctx = do
     outputErr
-        (("cannot unify conflicting return types of a function: " ++) . printTypes)
+        ( ("cannot unify conflicting return types of a function: " ++)
+        . printTypes
+        )
         ctx
     typeErr
     where printTypes = foldl' (.) id $ intersperse ("', '" ++) $ map shows ts
 
-conflFldSubsts :: (Print p, Position p) => Type -> TypeCtor -> [Type] -> p -> HarperOutput a
+conflFldSubsts
+    :: (Print p, Position p)
+    => Type
+    -> TypeCtor
+    -> [Type]
+    -> p
+    -> HarperOutput a
 conflFldSubsts t ctor ts ctx = do
     outputErr
-        (("cannot unify conflicting types: " ++) . printTypes
-        . (" resulting from field patterns applied to the type constructor `"++)
+        ( ("cannot unify conflicting types: " ++)
+        . printTypes
+        . (" resulting from field patterns applied to the type constructor `" ++
+          )
         . shows ctor
-        . ("` of type '"++)
+        . ("` of type '" ++)
         . shows t
-        . ("'."++))
+        . ("'." ++)
+        )
         ctx
     typeErr
     where printTypes = foldl' (.) id $ intersperse ("`, `" ++) $ map shows ts
@@ -382,7 +394,9 @@ patInvType tAct tExp ctx = do
 
 undeclaredCtor :: (Print p, Position p) => UIdent -> p -> HarperOutput a
 undeclaredCtor i ctx = do
-    outputErr (("undeclared type constructor `" ++) . showsPrt i . ("`." ++)) ctx
+    outputErr
+        (("undeclared type constructor `" ++) . showsPrt i . ("`." ++))
+        ctx
     typeErr
 
 undeclaredType :: (Print p, Position p) => UIdent -> p -> HarperOutput a

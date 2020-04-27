@@ -4,7 +4,7 @@ import qualified Data.Map                      as Map
 import           Harper.Abs
 import           Harper.TypeSystem.Core
 
-globalTypes :: TEnv
+globalTypes :: TypeStore
 globalTypes = Map.fromList
     [ (Ident "Integer", integerT)
     , (Ident "Bool"   , boolT)
