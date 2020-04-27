@@ -15,7 +15,7 @@ import           Harper.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Thunk
 
-funDecls :: [FunDecl Pos] -> Interpreter OEnv
+funDecls :: [FunDecl Meta] -> Interpreter OEnv
 funDecls ds = do
     st  <- get
     env <- asks objs
@@ -38,28 +38,38 @@ funDecls ds = do
         Fun (paramIs params) body env
     paramIs ps = [ i | FParam _ i <- ps ]
 
-declLocal :: LocalObjDecl Pos -> Expression Pos -> Interpreter OEnv
+declLocal :: LocalObjDecl Meta -> Expression Meta -> Interpreter OEnv
 declLocal decl e = do
     val <- makeThunk e
     l   <- newloc
     modify (Map.insert l val)
     declLocal' decl l
 
-declLocal' :: LocalObjDecl Pos -> Ptr -> Interpreter OEnv
+declLocal' :: LocalObjDecl Meta -> Ptr -> Interpreter OEnv
 declLocal' decl l = do
     env <- asks objs
-    l'  <- newloc
     case decl of
-        LocVarDecl _ (Decl _ i) -> do
+        LocVarDecl _ d -> do
             let var = Var (Just l)
-            modify (Map.insert l var)
-            return $ Map.insert i l env
-        LocValDecl _ (Decl _ i) -> return $ Map.insert i l env
+                i   = declId d
+            l' <- newloc
+            modify (Map.insert l' var)
+            return $ Map.insert i l' env
+        LocValDecl _ d -> let i = declId d in return $ Map.insert i l env
 
-declLocalUnass :: LocalObjDecl Pos -> Interpreter OEnv
-declLocalUnass (LocVarDecl _ (Decl _ i)) = do
+declLocalUnass :: LocalObjDecl Meta -> Interpreter OEnv
+declLocalUnass (LocVarDecl _ d) = do
     env <- asks objs
     l   <- newloc
     let var = Var Nothing
+        i   = declId d
     modify (Map.insert l var)
     return $ Map.insert i l env
+declLocalUnass d =
+    error
+        $ "Declarations without assignment for types other than LocVarDecl should be disallowed by the grammar. Decl: "
+        ++ show d
+
+declId :: Declaration a -> Ident
+declId (Decl      _ i            ) = i
+declId (DeclWHint _ (THint _ i _)) = i

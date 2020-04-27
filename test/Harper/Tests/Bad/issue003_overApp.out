@@ -1,0 +1,6 @@
+Error: type 'Integer' is not a function type and a value of this type cannot have arguments applied to it. Possibly caused by appling too many arguments to a function.
+During evaluation of:
+appMul 7 17 42 5 1
+Located at line 8 column 8
+
+Execution terminated with an error: type error.

@@ -8,13 +8,13 @@ import Harper.Alloc
 import Harper.Interpreter.Core
 import Harper.Interpreter.Snapshots
 
-makeThunk :: Expression Pos -> Interpreter Object
+makeThunk :: Expression Meta -> Interpreter Object
 makeThunk e = do
     env <- asks objs
     (e', env') <- snapshotExpr e
     return (Thunk e' (env' env) Nothing)
 
-emplaceThunk :: Expression Pos -> Interpreter Object
+emplaceThunk :: Expression Meta -> Interpreter Object
 emplaceThunk e = do
     env <- asks objs
     (e', env') <- snapshotExpr e

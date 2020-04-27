@@ -6,7 +6,6 @@ module Harper.Printer where
 import Harper.Abs
 import Data.Char
 
-
 -- the top-level printing method
 printTree :: Print a => a -> String
 printTree = render . prt 0
@@ -105,13 +104,14 @@ instance Print (TypeHint a) where
 instance Print (TypeExpr a) where
   prt i e = case e of
     TVar _ id -> prPrec i 2 (concatD [prt 0 id])
+    TCtor _ uident -> prPrec i 2 (concatD [prt 0 uident])
     TPur _ typepurity -> prPrec i 2 (concatD [prt 0 typepurity])
     TUnit _ -> prPrec i 2 (concatD [doc (showString "()")])
     TTup _ tupletype -> prPrec i 2 (concatD [doc (showString "("), prt 0 tupletype, doc (showString ")")])
     TAdHoc _ fieldtypeexprs -> prPrec i 2 (concatD [doc (showString "{"), prt 0 fieldtypeexprs, doc (showString "}")])
-    TCtor _ uident typeexprs -> prPrec i 1 (concatD [prt 0 uident, prt 2 typeexprs])
+    TApp _ uident typeexprs -> prPrec i 1 (concatD [prt 0 uident, prt 2 typeexprs])
     TFun _ typeexpr1 typeexpr2 -> prPrec i 0 (concatD [prt 1 typeexpr1, doc (showString "->"), prt 0 typeexpr2])
-  prtList 2 [] = (concatD [])
+  prtList 2 [x] = (concatD [prt 2 x])
   prtList 2 (x:xs) = (concatD [prt 2 x, prt 2 xs])
 instance Print (TupleType a) where
   prt i e = case e of

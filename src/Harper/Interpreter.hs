@@ -19,29 +19,31 @@ import           Harper.Printer
 import           Harper.Interpreter.Conditionals
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Declarations
-import           Harper.Interpreter.Expressions
+import           Harper.Expressions
 import           Harper.Interpreter.Snapshots
 import           Harper.Interpreter.Thunk
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.TypeSystem.Core         ( TypeCtor(..) )
+import           Harper.TypeSystem.GlobalTypes
+import           Harper.Abs.Typed
 import           OutputM
 
-runInterpreter :: Program Pos -> TEnv -> HarperOutput Object
+runInterpreter :: Program Meta -> TEnv -> HarperOutput Object
 runInterpreter tree tenv =
     evalStateT (runReaderT (interpret tree) (Env Map.empty tenv)) Map.empty
 
-interpret :: Program Pos -> Interpreter Object
+interpret :: Program Meta -> Interpreter Object
 interpret (Prog _ ds) = do
     let fds = [ fd | TopLvlFDecl _ fd <- ds ]
     env <- funDecls fds
-    localObjs (const env) (eval $ ObjExpr Nothing (Ident "main"))
+    localObjs (const env) (eval $ ObjExpr (unitT, Nothing) (Ident "main"))
 
-fBodyToStmt :: FunBody Pos -> Statement Pos
+fBodyToStmt :: FunBody Meta -> Statement Meta
 fBodyToStmt (FStmtBody _ s) = s
 fBodyToStmt (FExprBody a e) = RetExprStmt a e
 
-eval :: Expression Pos -> Interpreter Object
+eval :: Expression Meta -> Interpreter Object
 
 -- Literals
 
@@ -55,7 +57,7 @@ eval (  LitExpr _ (UnitLit _           )) = return PUnit
 -- Value construction.
 
 eval e@(VCtorExpr _ ctor flds           ) = do
-    lookup <- asks (Map.lookup ctor . types)
+    lookup <- asksTypes (Map.lookup ctor)
     case lookup of
         Just t@TypeCtor { flds = fldMap } -> do
             _data <- mapM fldAssToData flds
@@ -68,7 +70,7 @@ eval e@(VCtorExpr _ ctor flds           ) = do
             unless (Set.null excess)
                    (raise $ Error.excessFlds t (Set.toList excess) e)
             return $ Value t (Map.fromList _data)
-        Nothing -> raise $ Error.undeclaredUIdent ctor e
+        Nothing -> raise $ Error.undeclaredCtor ctor e
   where
     fldAssToData (DataAss _ i e) = do
         t <- emplaceThunk e
@@ -77,7 +79,7 @@ eval e@(VCtorExpr _ ctor flds           ) = do
 -- Object access.
 
 eval e@(ObjExpr _ i) = do
-    lookup <- asks (Map.lookup i . objs)
+    lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just l -> do
             o <- gets (Map.! l)
@@ -142,7 +144,7 @@ eval e'@(NegExpr a e) = do
     o <- eval e
     case o of
         PInt n -> return $ PInt (-n)
-        _      -> raise $ Error.invType (objType o) "Integer" e e'
+        _      -> error $ "Invalid type in negation. Type check should have caught this. " ++ show e'
 
 -- Equations.
 
@@ -167,8 +169,8 @@ eval e@(AndExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _        -> raise $ Error.invType (objType o2) "Bool" e2 e
-        _ -> raise $ Error.invType (objType o1) "Bool" e1 e
+                    _        -> error $ "Invalid type in and expression. Type check should have caught this. " ++ show e
+        _ -> raise $ error $ "Invalid type in and expression. Type check should have caught this. " ++ show e
 eval e@(OrExpr _ e1 e2) = do
     o1 <- eval e1
     case o1 of
@@ -178,47 +180,47 @@ eval e@(OrExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _        -> raise $ Error.invType (objType o2) "Bool" e2 e
-        _ -> raise $ Error.invType (objType o1) "Bool" e1 e
+                    _        -> error $ "Invalid type in or expression. Type check should have caught this. " ++ show e
+        _ -> error $ "Invalid type in or expression. Type check should have caught this. " ++ show e
 eval e'@(NotExpr _ e) = do
     o <- eval e
     case o of
         PBool b -> return $ PBool $ not b
-        _       -> raise $ Error.invType (objType o) "Bool" e e'
+        _       -> error $ "Invalid type in not expression. Type check should have caught this. " ++ show e
 
 eval e =
     error ("Evaluating this type of values is not implemented yet: " ++ show e)
 
-apply :: Object -> Expression Pos -> Interpreter Object
+apply :: Object -> Expression Meta -> Interpreter Object
 apply (Fun (p : ps) s env) argV = do
     arg <- emplaceThunk argV
     let env' = Map.insert p (fromJust $ this arg) env
     case ps of
         [] -> localObjs (const env') (call s)
         _  -> return $ Fun ps s env'
-apply _ argV = raise $ Error.overApp argV
+apply _ argV = error $ "Overapplication at runtime. Type check should have caught this. " ++ show argV
 
-call :: Statement Pos -> Interpreter Object
-call s = exec s return f where f = raise $ Error.noReturn s
+call :: Statement Meta -> Interpreter Object
+call s = exec s return f where f = raise $ Error.noRet s
 
 -- Execution uses continuation-passing-style to implement control flow. 
 -- Since statements can only be executed in a body of a function, they take at least two continuations:
 -- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
 -- the place of call. Using k continues the execution to the next statement.
 exec
-    :: Statement Pos
+    :: Statement Meta
     -> (Object -> Interpreter a)
     -> Interpreter a
     -> Interpreter a
-exec (RetExprStmt _ e) kRet _ = do
-    o <- eval e
-    kRet o
 exec (EmptyStmt _         ) _    k = k
 exec (StmtBlock _ []      ) _    k = k
 exec (StmtBlock a (s : ss)) kRet k = exec s kRet (exec (StmtBlock a ss) kRet k)
 
 -- Control flow.
 
+exec (RetExprStmt _ e) kRet _ = do
+    o <- eval e
+    kRet o
 exec (RetStmt _           ) kRet _ = kRet PUnit
 exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
   where
@@ -230,13 +232,13 @@ exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
         case o of
             PBool True  -> exec stmt kRet k
             PBool False -> execIfs ifs kRet k
-            _           -> raise $ Error.invType (objType o) "Bool" pred s
+            _           -> error $ "Invalid type of if predicate. Type check should have caught this. " ++ show c
 exec w@(WhileStmt _ pred s) kRet k = do
     o <- eval pred
     case o of
         PBool True  -> exec s kRet (exec w kRet k)
         PBool False -> k
-        _           -> raise $ Error.invType (objType o) "Bool" pred w
+        _           -> error $ "Invalid type of while predicate. Type check should have caught this. " ++ show w
 exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
   where
     execMatches e (MatchStmtClause _ p s : cs) =
@@ -245,23 +247,18 @@ exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
 
 -- Declarations.
 
-exec (DeclStmt _ decl) _ k = case decl of
-    LocVarDecl _ (Decl _ i) -> do
-        l <- alloc (Var Nothing)
-        localObjs (Map.insert i l) k
+exec (DeclStmt _ decl) _ k = do
+    oenv <- declLocalUnass decl
+    localObjs (const oenv) k
 exec (DconStmt _ (PatDecl _ decl) e) _ k = do
     val <- emplaceThunk e
-    case decl of
-        LocVarDecl _ (Decl _ i) -> do
-            l <- alloc (Var (this val))
-            localObjs (Map.insert i l) k
-        LocValDecl _ (Decl _ i) ->
-            localObjs (Map.insert i (fromJust $ this val)) k
+    oenv <- declLocal' decl (fromJust $ this val)
+    localObjs (const oenv) k
 
 -- Assignment.
 
 exec s@(AssStmt _ i e) kRet k = do
-    lookup <- asks (Map.lookup i . objs)
+    lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just l -> do
             o <- gets (Map.! l)
@@ -274,20 +271,20 @@ exec s@(AssStmt _ i e) kRet k = do
                 o       -> raise $ Error.invAss (objType o) i s
         Nothing -> raise $ Error.undeclaredIdent i s
 exec (AddStmt p i e) kRet k =
-    exec (AssStmt p i (AddExpr p (ObjExpr Nothing i) e)) kRet k
+    exec (AssStmt p i (AddExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 exec (SubStmt p i e) kRet k =
-    exec (AssStmt p i (SubExpr p (ObjExpr Nothing i) e)) kRet k
+    exec (AssStmt p i (SubExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 exec (MulStmt p i e) kRet k =
-    exec (AssStmt p i (MulExpr p (ObjExpr Nothing i) e)) kRet k
+    exec (AssStmt p i (MulExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 exec (DivStmt p i e) kRet k =
-    exec (AssStmt p i (DivExpr p (ObjExpr Nothing i) e)) kRet k
+    exec (AssStmt p i (DivExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 exec (PowStmt p i e) kRet k =
-    exec (AssStmt p i (PowExpr p (ObjExpr Nothing i) e)) kRet k
+    exec (AssStmt p i (PowExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 
 exec s _ _ = error
     ("Executing this type of expressions is not implemented yet: " ++ show s)
 
-evalIntBinOp :: Expression Pos -> Interpreter Object
+evalIntBinOp :: Expression Meta -> Interpreter Object
 evalIntBinOp e = do
     let (op, e1, e2, cfz) = case e of
             AddExpr _ e1 e2 -> ((+), e1, e2, False)
@@ -302,12 +299,9 @@ evalIntBinOp e = do
         (PInt n1, PInt n2) -> do
             when (cfz && n2 == 0) (raise $ Error.divByZero e2 e)
             return $ PInt $ n1 `op` n2
-        (_     , PInt _) -> raise $ Error.invType (objType o1) "Integer" e1 e
-        (PInt _, _     ) -> raise $ Error.invType (objType o2) "Integer" e2 e
-        (_     , _     ) -> raise
-            $ Error.invTypes (objType o1) (objType o2) "Integer" e1 e2 e
+        _ -> error $ "Invalid type in binary integer operator. Type check should have caught this. " ++ show e
 
-evalEqOp :: Expression Pos -> Interpreter Object
+evalEqOp :: Expression Meta -> Interpreter Object
 evalEqOp e = do
     let (s, e1, e2) = case e of
             EqExpr  _ e1 e2 -> (id, e1, e2)
@@ -321,9 +315,9 @@ evalEqOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 == s2
         (PChar c1, PChar c2) -> f $ c1 == c2
         (PUnit   , PUnit   ) -> f True
-        _ -> raise $ Error.invEqTypes (objType o1) (objType o2) e1 e2 e
+        _ -> error $ "Invalid types in eq operator. Type check should have caught this. " ++ show e
 
-evalCmpOp :: Expression Pos -> Interpreter Object
+evalCmpOp :: Expression Meta -> Interpreter Object
 evalCmpOp e = do
     let (s, e1, e2) = case e of
             LEqExpr _ e1 e2 -> (\o -> o == LT || o == EQ, e1, e2)
@@ -338,7 +332,7 @@ evalCmpOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 `compare` s2
         (PChar c1, PChar c2) -> f $ c1 `compare` c2
         (PUnit   , PUnit   ) -> f EQ
-        _ -> raise $ Error.invCmpTypes (objType o1) (objType o2) e1 e2 e
+        _ -> error $ "Invalid types in cmp operator. Type check should have caught this. " ++ show e
 
 evalThunk :: Object -> Interpreter Object
 evalThunk (Thunk e env ptr) = do
@@ -352,8 +346,8 @@ evalThunk o = return o
 
 -- Continuation passing style - kMatch is called when object matches the pattern, kElse otherwise.
 patMatch
-    :: Pattern Pos
-    -> Expression Pos
+    :: Pattern Meta
+    -> Expression Meta
     -> Interpreter a
     -> Interpreter a
     -> Interpreter a
@@ -369,7 +363,7 @@ patMatch p@PatCtor{} e kMatch kElse = do
     patMatch' p o kMatch kElse
 
 patMatch'
-    :: Pattern Pos -> Object -> Interpreter a -> Interpreter a -> Interpreter a
+    :: Pattern Meta -> Object -> Interpreter a -> Interpreter a -> Interpreter a
 patMatch' PatDisc{}      _ kMatch _     = kMatch
 patMatch' (PatLit _ lit) o kMatch kElse = do
     o' <- evalThunk o

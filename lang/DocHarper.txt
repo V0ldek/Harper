@@ -76,6 +76,7 @@ All other symbols are terminals.
   |  |  **|**  | //TopLvlDecl// ``;`` //[TopLvlDecl]// 
   | //TypeHint// | -> | //Ident// ``::`` //TypeExpr// 
   | //TypeExpr2// | -> | //Ident// 
+  |  |  **|**  | //UIdent// 
   |  |  **|**  | //TypePurity// 
   |  |  **|**  | ``()`` 
   |  |  **|**  | ``(`` //TupleType// ``)`` 
@@ -85,7 +86,7 @@ All other symbols are terminals.
   |  |  **|**  | //TypeExpr2// 
   | //TypeExpr// | -> | //TypeExpr1// ``->`` //TypeExpr// 
   |  |  **|**  | //TypeExpr1// 
-  | //[TypeExpr2]// | -> | **eps**
+  | //[TypeExpr2]// | -> | //TypeExpr2// 
   |  |  **|**  | //TypeExpr2// //[TypeExpr2]// 
   | //TupleType// | -> | //TypeExpr// ``,`` //TupleType// 
   |  |  **|**  | //TypeExpr// ``,`` //TypeExpr// 

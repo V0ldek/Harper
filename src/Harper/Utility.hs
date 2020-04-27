@@ -4,6 +4,8 @@ import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 
+import Harper.Abs
+
 -- Equivalent of Map.fromList, but fails if the keys are not unique
 -- and returns the conflict tuple - key, value1, value2
 mapFromListUnique :: Ord k => [(k, a)] -> Either (k, a, a) (Map.Map k a)
@@ -34,3 +36,14 @@ setFromListUniqueBy f = foldM addIfUnique Set.empty
     addIfUnique s a = let k = f a
                       in if Set.member k s then Left a else Right (Set.insert k s)
 
+itu :: Ident -> UIdent
+itu (Ident s) = UIdent s
+
+uti :: UIdent -> Ident
+uti (UIdent s) = Ident s
+
+its :: Ident -> String
+its (Ident s) = s
+
+uts :: UIdent -> String
+uts (UIdent s) = s

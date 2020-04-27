@@ -1,0 +1,6 @@
+Error: expression `n` evaluated to zero causing a division error.
+During evaluation of:
+ 42 mod n 
+Located at line 5 column 7
+
+Execution terminated with an error: runtime error.

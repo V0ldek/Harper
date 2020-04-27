@@ -18,14 +18,15 @@ terminator TopLvlDecl ";" ;
 THint. TypeHint ::= Ident "::" TypeExpr ;
 
 TVar.   TypeExpr2  ::= Ident ;
+TCtor.  TypeExpr2  ::= UIdent ;
 TPur.   TypeExpr2  ::= TypePurity ;
 TUnit.  TypeExpr2  ::= "()" ;
 TTup.   TypeExpr2  ::= "(" TupleType ")" ;
 TAdHoc. TypeExpr2  ::= "{" [FieldTypeExpr] "}" ;
-TCtor.  TypeExpr1  ::= UIdent [TypeExpr2] ;
+TApp.   TypeExpr1  ::= UIdent [TypeExpr2] ;
 TFun.   TypeExpr  ::= TypeExpr1 "->" TypeExpr ;
 
-separator TypeExpr2 "";
+separator nonempty TypeExpr2 "";
 coercions TypeExpr 2 ;
 
 TTupList. TupleType ::= TypeExpr "," TupleType ;
@@ -123,7 +124,7 @@ TupExprTail. TupleExpression ::= Expression11 "," Expression11 ;
 -- Match expressions.
 
 MatchExprClause. MatchExpressionClause ::= Pattern "=>" Expression ;
-separator MatchExpressionClause "," ;
+separator nonempty MatchExpressionClause "," ;
 
 -- Value construction expressions.
 
@@ -176,7 +177,7 @@ separator nonempty Statement "" ;
 -- Match statements.
 
 MatchStmtClause. MatchStatementClause ::= Pattern "=>" Statement4 ;
-separator MatchStatementClause "" ;
+separator nonempty MatchStatementClause "" ;
 
 -- Conditional statements.
 

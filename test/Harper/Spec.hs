@@ -53,10 +53,10 @@ testOutput (TProg prog out) = TestCase
                                     ++ s
 
 
-normalize s = dropWhile isSpace $ rmOccs white $ rmOccs red $ fst $ foldr
-    normWs
-    ("", False)
-    s
+normalize s =
+    fst $ foldr normWs ("", False) $ dropWhile isSpace $ rmOccs white $ rmOccs
+        red
+        s
   where
     normWs c (acc, ws) = case (isSpace c, ws) of
         (True , True ) -> (acc, True)

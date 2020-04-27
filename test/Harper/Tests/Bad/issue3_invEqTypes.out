@@ -1,6 +1,0 @@
-Error: expressions `a` and `b` have invalid types 'Integer', 'Unit'; only values of the same primitive type can be equated.
-During evaluation of: 
- a == b
-Located at line 2 column 6 
-
-Execution terminated with an error: runtime error.

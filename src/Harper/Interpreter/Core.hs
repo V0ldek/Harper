@@ -7,8 +7,12 @@ import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 
 import           Harper.Abs
+import           Harper.Abs.Pos
 import           Harper.Output
-import           Harper.TypeSystem.Core         ( TypeCtor(..) )
+import           Harper.TypeSystem.Core         ( TypeCtor(..)
+                                                , TypeMetaData
+                                                )
+import           Harper.Abs.Typed
 import           OutputM
 
 type Ptr = Int
@@ -19,12 +23,14 @@ type TEnv = Map.Map UIdent TypeCtor
 data Env = Env { objs :: OEnv,
                  types :: TEnv } deriving (Show, Eq)
 
-type Interpreter a = ReaderT Env (StateT Store (Output ShowS)) a
+type Interpreter = ReaderT Env (StateT Store (Output ShowS))
+
+type Meta = TypeMetaData Pos
 
 data Object = Fun { params :: [Ident],
-                    body :: Statement Pos,
+                    body :: Statement Meta,
                     env :: OEnv }
-            | Thunk { expr :: Expression Pos,
+            | Thunk { expr :: Expression Meta,
                       env :: OEnv,
                       this :: Maybe Ptr }
             | Value { _type :: TypeCtor, _data :: OEnv }
@@ -40,7 +46,7 @@ instance Show Object where
   show (PInt  n    ) = show n
   show (PBool True ) = "true"
   show (PBool False) = "false"
-  show (PStr  s    ) = drop 1 $ init s
+  show (PStr  s    ) = s
   show (PChar c    ) = show c
   show PUnit         = "()"
   show (Thunk e env ptr) =
@@ -60,6 +66,12 @@ showData d =
 
 localObjs :: (OEnv -> OEnv) -> Interpreter a -> Interpreter a
 localObjs f = local (\env -> env { objs = f $ objs env })
+
+asksTypes :: (TEnv -> a) -> Interpreter a
+asksTypes f = asks (f . types)
+
+asksObjs :: (OEnv -> a) -> Interpreter a
+asksObjs f = asks (f . objs)
 
 objType :: Object -> String
 objType (PInt  _)      = "Integer"

@@ -14,6 +14,7 @@ import           System.Exit                    ( exitFailure
 import           Control.Monad                  ( when )
 
 import           Harper.Abs
+import           Harper.Abs.Pos
 import           Harper.Interpreter
 import           Harper.Lexer
 import           Harper.Parser
@@ -56,6 +57,8 @@ run v p s =
                     Ok (tree', tenv) -> do
                         let Out out res = runInterpreter tree' tenv
                         putStrLn $ out ""
+                        putStrLn "\nType check successful."
+                        showTree v tree'
                         case res of
                             Ok v ->
                                 putStrLn
@@ -94,8 +97,3 @@ main = do
         []         -> getContents >>= run 2 pProgram
         "-s" : fs  -> mapM_ (runFile 0 pProgram) fs
         fs         -> mapM_ (runFile 2 pProgram) fs
-
-
-
-
-

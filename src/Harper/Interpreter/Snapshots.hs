@@ -11,7 +11,7 @@ import           Harper.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Error
 
-snapshotExpr :: Expression Pos -> Interpreter (Expression Pos, OEnv -> OEnv)
+snapshotExpr :: Expression Meta -> Interpreter (Expression Meta, OEnv -> OEnv)
 
 -- Literals
 
@@ -30,7 +30,7 @@ snapshotExpr (VCtorExpr a ctor flds) = do
 -- Object access.
 
 snapshotExpr e@(ObjExpr p i) = do
-    lookup <- asks (Map.lookup i . objs)
+    lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just l -> do
             o <- gets (Map.! l)
@@ -87,18 +87,18 @@ snapshotExpr e                 = error
     ("Evaluating this type of expressions is not implemented yet: " ++ show e)
 
 snapshotUnExpr
-    :: Expression Pos
-    -> (Expression Pos -> Expression Pos)
-    -> Interpreter (Expression Pos, OEnv -> OEnv)
+    :: Expression Meta
+    -> (Expression Meta -> Expression Meta)
+    -> Interpreter (Expression Meta, OEnv -> OEnv)
 snapshotUnExpr e f = do
     (e', env) <- snapshotExpr e
     return (f e, env)
 
 snapshotBinExpr
-    :: Expression Pos
-    -> Expression Pos
-    -> (Expression Pos -> Expression Pos -> Expression Pos)
-    -> Interpreter (Expression Pos, OEnv -> OEnv)
+    :: Expression Meta
+    -> Expression Meta
+    -> (Expression Meta -> Expression Meta -> Expression Meta)
+    -> Interpreter (Expression Meta, OEnv -> OEnv)
 snapshotBinExpr e1 e2 f = do
     (e1', env1) <- snapshotExpr e1
     (e2', env2) <- localObjs env1 (snapshotExpr e2)

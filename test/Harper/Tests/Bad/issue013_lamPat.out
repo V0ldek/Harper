@@ -1,0 +1,8 @@
+Error: the pattern of type '(Bag Integer Integer Integer Integer) -> a&' cannot be used to match an expression of type '(Bag a& ~tVar1 ~tVar2 ~tVar3) -> a&'. 
+During evaluation of: 
+(extract :: Bag Integer Integer Integer Integer -> a)
+
+Located at line 9 column 3
+
+
+Execution terminated with an error: type error.

@@ -1,6 +1,10 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Harper.TypeSystem.Declarations
     ( typeDecls
-    , declare
+    , Declarable(..)
+    , declareList
+    , declIs
+    , patDeclIs
     )
 where
 import           Control.Monad.Reader
@@ -11,6 +15,8 @@ import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 
 import           Harper.Abs
+import           Harper.Abs.Pos
+import           Harper.Abs.Typed
 import           Harper.Alloc
 import qualified Harper.Error                  as Error
 import           Harper.Output
@@ -24,15 +30,16 @@ getCtorIdents d@(ValTUDecl _ _ variants) =
 getCtorIdents d =
     error $ "This type of type declarations is not supported yet: " ++ show d
 
-typeDecls :: [TypeDecl Pos] -> TypeChecker (TEnv, CEnv)
+typeDecls :: [TypeDecl Pos] -> TypeChecker TEnv
 typeDecls ds = do
     () <- assertUniqueNames
     () <- assertUniqueCtors
     ts <- mapM declToType ds
-    let tenv = Map.fromList [ (Ident i, t) | t@(VType (UIdent i) _ _ _) <- ts ]
+    let tenv = Map.fromList [ (uti i, t) | t@(VType i _ _ _) <- ts ]
     ctors <- localTypes (Map.union tenv) (mapM declToCtors ds)
-    let cenv = Map.fromList [ (ctor c, c) | c <- concat ctors ]
-    return (tenv, cenv)
+    let cs = Map.fromList [ (ctor c, c) | c <- concat ctors ]
+    modify (\st -> st { tCtors = cs })
+    return tenv
   where
     assertUniqueNames = case mapFromListUnique (zip (map toIdent ds) ds) of
         Right _           -> return ()
@@ -44,8 +51,8 @@ typeDecls ds = do
             of
                 Right _           -> return ()
                 Left  (i, d1, d2) -> raise $ Error.conflCtorNames i d1 d2
-    toIdent d@(ValTDecl  _ (TSig _ (UIdent i) _) _) = Ident i
-    toIdent d@(ValTUDecl _ (TSig _ (UIdent i) _) _) = Ident i
+    toIdent d@(ValTDecl  _ (TSig _ i _) _) = uti i
+    toIdent d@(ValTUDecl _ (TSig _ i _) _) = uti i
     toIdent d =
         error
             $  "This type of type declarations is not supported yet: "
@@ -81,35 +88,69 @@ variantToTypeCtor tName vars (TVarDecl _ ctor body) = case body of
         let fs   = [ f | TFldDecl _ f <- flds ]
         case setFromListUnique fs of
             Right _ -> do
-                env <- localTypes (Map.union tenv) (declare' fs)
-                return $ TypeCtor tName ctor env
+                (_, oenv) <- localTypes (Map.union tenv) (declareList fs)
+                return $ TypeCtor tName ctor oenv
     TBody{} -> return $ TypeCtor tName ctor Map.empty
 
-declare :: TypeHint Pos -> TypeChecker OEnv
-declare (THint _ i tExpr) = do
-    t <- parseType tExpr
-    asks (Map.insert i t . objs)
+class Declarable a where
+    declare :: a Pos -> TypeChecker (a (TypeMetaData Pos), OEnv)
+    declI :: a b -> Ident
 
-declare' :: [TypeHint Pos] -> TypeChecker OEnv
-declare' = foldM combine Map.empty
-  where
-    combine env f = do
-        env' <- declare f
-        return $ Map.union env' env
+instance Declarable TypeHint where
+    declare h@(THint _ i tExpr) = do
+        t <- parseType tExpr
+        return (annWith t <$> h, Map.fromList [(i, t)])
+
+    declI (THint _ i _) = i
+
+instance Declarable Declaration where
+    declare d@(Decl      _ i ) = raise $ Error.locWOutType i d
+    declare d@(DeclWHint a th) = do
+        (th', env) <- declare th
+        return (DeclWHint (annWith (typ th') a) th', env)
+
+    declI (Decl      _ i ) = i
+    declI (DeclWHint _ th) = declI th
+
+instance Declarable LocalObjDecl where
+    declare (LocVarDecl a decl) = do
+        (decl', env) <- declare decl
+        return (LocVarDecl (annWith (typ decl') a) decl', env)
+    declare (LocValDecl a decl) = do
+        (decl', env) <- declare decl
+        return (LocValDecl (annWith (typ decl') a) decl', env)
+
+    declI (LocVarDecl _ decl) = declI decl
+    declI (LocValDecl _ decl) = declI decl
+
+declareList
+    :: Declarable a => [a Pos] -> TypeChecker ([a (TypeMetaData Pos)], OEnv)
+declareList as = do
+    res <- mapM declare as
+    return (map fst res, foldl' (\o (_, o') -> Map.union o' o) Map.empty res)
+
+declIs :: Declarable a => [a b] -> [Ident]
+declIs = map declI
+
+patDeclIs :: Pattern a -> [Ident]
+patDeclIs p = case p of
+    PatLit  _ _      -> []
+    PatDecl _ decl   -> [declI decl]
+    PatData _ flds   -> concatMap fldDeclIs flds
+    PatDisc _        -> []
+    PatCtor _ _ flds -> concatMap fldDeclIs flds
+    where fldDeclIs (PatFld _ _ p) = patDeclIs p
 
 parseType :: TypeExpr Pos -> TypeChecker Type
-parseType e@(TVar _ i    ) = do
-    lookup <- asks (Map.lookup i . types)
-    case lookup of
-        Just t  -> return t
-        Nothing -> raise $ Error.unboundTypeVar i e
-parseType (TUnit _     ) = return $ PType (UIdent "Unit")
-parseType (TFun _ e1 e2) = do
+parseType e@(TVar  _ i   ) = return $ TypeVar i
+parseType (  TCtor a i   ) = parseType (TApp a i [])
+parseType (  TUnit _     ) = return $ PType (UIdent "Unit")
+parseType (  TFun _ e1 e2) = do
     p <- parseType e1
     r <- parseType e2
     return $ FType p r
-parseType e@(TCtor _ u@(UIdent i) es) = do
-    lookup <- asks (Map.lookup (Ident i) . types)
+parseType e@(TApp _ u es) = do
+    lookup <- asksTypes (Map.lookup $ uti u)
     let n = length es
     case lookup of
         Just t@(VType _ params _ c) -> if length params /= n
@@ -117,8 +158,9 @@ parseType e@(TCtor _ u@(UIdent i) es) = do
             else do
                 tArgs <- mapM parseType es
                 return $ VType u params tArgs c
-        Just t  -> raise $ Error.typeInvArity t 0 n e
-        Nothing -> raise $ Error.undeclaredUIdent u e
+        Just t | n == 0 -> return t
+        Just t          -> raise $ Error.typeInvArity t 0 n e
+        Nothing         -> raise $ Error.undeclaredType u e
 
 parseType t =
     error $ "This type of type declarations is not supported: " ++ show t
