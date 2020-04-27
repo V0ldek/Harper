@@ -42,7 +42,7 @@ testOutput (TProg prog out) = TestCase
                                         Ok v ->
                                             out' (out "")
                                                 ++ "\nExecution ended with value:\n"
-                                                ++ (v"")
+                                                ++ v ""
                                         Bad s ->
                                             out' (out "")
                                                 ++ "\nExecution terminated with an error: "
@@ -94,4 +94,4 @@ main = do
             return $ TestLabel testName (testOutput $ TProg prog res)
 
 setLookup :: Ord a => a -> Set.Set a -> Maybe a
-setLookup a s = if Set.member a s then Set.lookupLE a s else Nothing
+setLookup a s = if Set.member a s then Just a else Nothing

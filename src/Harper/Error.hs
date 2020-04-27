@@ -150,10 +150,7 @@ divByZero e ctx = do
 assToValue :: (Print p, Position p) => Ident -> p -> HarperOutput a
 assToValue i ctx = do
     outputErr
-        ( ("cannot assign to an immutable value `" ++)
-        . showsPrt i
-        . ("`." ++)
-        )
+        (("cannot assign to an immutable value `" ++) . showsPrt i . ("`." ++))
         ctx
     typeErr
 
@@ -189,12 +186,11 @@ unassFlds t is ctx = do
          )
         . shows t
         . ("' are: `" ++)
-        . flds
+        . showsPrtMany is
         . ("`." ++)
         )
         ctx
     typeErr
-    where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
 
 excessFlds
     :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
@@ -203,41 +199,48 @@ excessFlds t is ctx = do
         (("unrecognized field identifiers during value construction. Type '" ++)
         . shows t
         . ("' has no fields: `" ++)
-        . flds
+        . showsPrtMany is
         . ("`." ++)
         )
         ctx
     typeErr
-    where flds = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt is
 
-conflTypeNames
-    :: (Print p1, Position p1, Print p2, Position p2)
-    => Ident
-    -> p1
-    -> p2
-    -> HarperOutput a
-conflTypeNames i ctx1 ctx2 = do
-    outputConfl (("conflicting type name `" ++) . showsPrt i . ("`." ++))
-                ctx1
-                ctx2
+conflTypeNames :: (Print p, Position p) => [Ident] -> [p] -> HarperOutput a
+conflTypeNames is ctxs = do
+    outputConflDecls
+        (("conflicting type names `" ++) . showsPrtMany is . ("`." ++))
+        ctxs
     typeErr
 
-conflCtorNames
-    :: (Print p1, Position p1, Print p2, Position p2)
-    => UIdent
-    -> p1
-    -> p2
-    -> HarperOutput a
-conflCtorNames i ctx1 ctx2 = do
-    outputConfl (("conflicting ctor name `" ++) . showsPrt i . ("`." ++))
-                ctx1
-                ctx2
+conflCtorNames :: (Print p, Position p) => [UIdent] -> [p] -> HarperOutput a
+conflCtorNames is ctxs = do
+    outputConflDecls
+        (("conflicting ctor names `" ++) . showsPrtMany is . ("`." ++))
+        ctxs
     typeErr
 
-conflTypeParam :: (Print p, Position p) => Ident -> p -> HarperOutput a
-conflTypeParam i ctx = do
+conflTypeParams :: (Print p, Position p) => [Ident] -> p -> HarperOutput a
+conflTypeParams is ctx = do
     outputErr
-        (("conflicting type parameter name `" ++) . showsPrt i . ("`." ++))
+        (("conflicting type parameter names `" ++) . showsPrtMany is . ("`." ++)
+        )
+        ctx
+    typeErr
+
+conflFldNames :: (Print p, Position p) => [Ident] -> p -> HarperOutput a
+conflFldNames is ctx = do
+    outputErr
+        (("conflicting field names `" ++) . showsPrtMany is . ("`." ++))
+        ctx
+    typeErr
+
+conflPatDecls :: (Print p, Position p) => [Ident] -> p -> HarperOutput a
+conflPatDecls is ctx = do
+    outputErr
+        ( ("conflicting variable identifiers `" ++)
+        . showsPrtMany is
+        . ("` in pattern." ++)
+        )
         ctx
     typeErr
 
@@ -343,20 +346,19 @@ tooManyParams i t n1 n2 ctx = do
 conflMatchClauseTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflMatchClauseTypes ts ctx = do
     outputErr
-        (("cannot unify conflicting types of match clauses: " ++) . printTypes)
+        (("cannot unify conflicting types of match clauses: " ++) . showsMany ts
+        )
         ctx
     typeErr
-    where printTypes = foldl' (.) id $ intersperse ("', '" ++) $ map shows ts
 
 conflRetTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflRetTypes ts ctx = do
     outputErr
         ( ("cannot unify conflicting return types of a function: " ++)
-        . printTypes
+        . showsMany ts
         )
         ctx
     typeErr
-    where printTypes = foldl' (.) id $ intersperse ("', '" ++) $ map shows ts
 
 conflFldSubsts
     :: (Print p, Position p)
@@ -368,7 +370,7 @@ conflFldSubsts
 conflFldSubsts t ctor ts ctx = do
     outputErr
         ( ("cannot unify conflicting types: " ++)
-        . printTypes
+        . showsMany ts
         . (" resulting from field patterns applied to the type constructor `" ++
           )
         . shows ctor
@@ -378,7 +380,6 @@ conflFldSubsts t ctor ts ctx = do
         )
         ctx
     typeErr
-    where printTypes = foldl' (.) id $ intersperse ("`, `" ++) $ map shows ts
 
 patInvType :: (Print p, Position p) => Type -> Type -> p -> HarperOutput a
 patInvType tAct tExp ctx = do
@@ -415,3 +416,9 @@ invCtor t i ctx = do
         )
         ctx
     typeErr
+
+showsMany :: (Show a) => [a] -> ShowS
+showsMany xs = foldl' (.) id $ intersperse ("`, `" ++) $ map shows xs
+
+showsPrtMany :: (Print p) => [p] -> ShowS
+showsPrtMany xs = foldl' (.) id $ intersperse ("`, `" ++) $ map showsPrt xs

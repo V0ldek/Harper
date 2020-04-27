@@ -1,0 +1,12 @@
+Error: conflicting field names `a`, `c`.
+During evaluation of:
+data = {
+  a :: a ;
+  a :: b ;
+  c :: c ;
+  c :: d ;
+  }
+
+Located at line 2 column 3
+
+Execution terminated with an error: type error.

@@ -4,9 +4,10 @@ module Harper.Output
   , outputMsg
   , outputLog
   , outputErr
-  , outputConfl
+  , outputConflDecls
   )
 where
+import           Data.List
 
 import           Harper.Abs
 import           Harper.Abs.Pos
@@ -61,27 +62,18 @@ outputErr s ctx = output msg
       . ("\n" ++)
       . ansiFgColor white
 
-
-outputConfl
-  :: (Position a, Print a, Position b, Print b)
-  => ShowS
-  -> a
-  -> b
-  -> HarperOutput ()
-outputConfl s ctx1 ctx2 = output msg
+outputConflDecls :: (Position a, Print a) => ShowS -> [a] -> HarperOutput ()
+outputConflDecls s ctxs = output msg
  where
   msg =
     ansiFgColor red
       . ("Error: " ++)
       . s
-      . ("\nDuring evaluation of:\n" ++)
-      . showsPrt ctx2
-      . prtPosition ctx2
-      . ("\nConfilting with:\n" ++)
-      . showsPrt ctx1
-      . prtPosition ctx1
-      . ("\n" ++)
+      . ("\nConflicting declarations:\n" ++)
+      . prtContexts
       . ansiFgColor white
+  prtContexts =
+    foldl' (\f c -> f . showsPrt c . prtPosition c . ("\n" ++)) id ctxs
 
 prtPosition :: Position a => a -> ShowS
 prtPosition a = case pos a of

@@ -1,0 +1,23 @@
+Error: conflicting type names `Bag`.
+Conflicting declarations:
+value Bag e f = {
+  data = {
+    e :: e ;
+    f :: f ;
+    }
+  }
+
+Located at line 7 column 1
+value Bag a b c d = {
+  data = {
+    a :: a ;
+    b :: b ;
+    c :: c ;
+    d :: d ;
+    }
+  }
+
+Located at line 1 column 1
+
+
+Execution terminated with an error: type error.

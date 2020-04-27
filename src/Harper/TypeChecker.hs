@@ -173,11 +173,14 @@ annotateExpr e@(LamExpr a params body) = do
     return $ LamExpr (annWith t a) params' body'
   where
     annotateParams = do
-        paramPats <- mapM annotateParam params
-        let (params', envs) = unzip paramPats
--- TODO: Make sure there are no conflicting declarations in child patterns.
-            env             = foldr Map.union Map.empty envs
-        return (params', env)
+        let fldIs = concatMap (\(LamParam _ pat) -> patDeclIs pat) params
+        case findDups fldIs of
+            [] -> do
+                paramPats <- mapM annotateParam params
+                let (params', envs) = unzip paramPats
+                    env             = foldr Map.union Map.empty envs
+                return (params', env)
+            ds -> raise $ Error.conflPatDecls ds e
     annotateParam (LamParam a pat) = do
         (pat', oenv) <- annotatePat pat
         return (LamParam (annWith (typ pat') a) pat', oenv)
@@ -390,16 +393,21 @@ annotatePat p@(PatCtor a i flds) = do
     case cInst of
         Just (ctor@(TypeCtor tName _ _), t) -> do
             fldPats <- mapM (annotateFldPattern ctor) flds
-            let (flds', substs, envs) = unzip3 fldPats
--- TODO: Make sure there are no conflicting declarations in child patterns.
-                env                   = foldr Map.union Map.empty envs
-                ts                    = map (`apply` t) substs
-                subst                 = unifys ts
-            case subst of
-                Just s ->
-                    let t' = if null ts then t else apply s (head ts)
-                    in  return (PatCtor (annWith t' a) i flds', env)
-                Nothing -> raise $ Error.conflFldSubsts t ctor ts p
+            let declIs = concatMap (\(PatFld _ _ pat) -> patDeclIs pat) flds
+            case findDups declIs of
+                [] ->
+                    let (flds', substs, envs) = unzip3 fldPats
+                        env                   = foldr Map.union Map.empty envs
+                        ts                    = map (`apply` t) substs
+                        subst                 = unifys ts
+                    in  case subst of
+                            Just s ->
+                                let t' = if null ts
+                                        then t
+                                        else apply s (head ts)
+                                in  return (PatCtor (annWith t' a) i flds', env)
+                            Nothing -> raise $ Error.conflFldSubsts t ctor ts p
+                ds -> raise $ Error.conflPatDecls ds p
         Nothing -> raise $ Error.undeclaredCtor i p
   where
     annotateFldPattern ctor@(TypeCtor tName _ ctorFlds) e@(PatFld a i p') =

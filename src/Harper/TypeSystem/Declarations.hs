@@ -43,16 +43,17 @@ declTypes ds = do
     let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
     modify (\st -> st { tCtors = ctorStore })
   where
-    assertUniqueNames = case mapFromListUnique (zip (map toIdent ds) ds) of
-        Right _           -> return ()
-        Left  (i, d1, d2) -> raise $ Error.conflTypeNames i d1 d2
+    assertUniqueNames = case findDupsBy toIdent ds of
+        ([], []) -> return ()
+        (is, ds) -> raise $ Error.conflTypeNames is ds
     assertUniqueCtors =
         case
-                mapFromListUnique
+                findDupsBy
+                    fst
                     (concatMap (\d -> zip (getCtorIdents d) (repeat d)) ds)
             of
-                Right _           -> return ()
-                Left  (i, d1, d2) -> raise $ Error.conflCtorNames i d1 d2
+                ([], []) -> return ()
+                (is, ds) -> raise $ Error.conflCtorNames is (map snd ds)
     toIdent d@(ValTDecl  _ (TSig _ i _) _) = uti i
     toIdent d@(ValTUDecl _ (TSig _ i _) _) = uti i
     toIdent d =
@@ -64,14 +65,16 @@ declToType :: TypeDecl Pos -> TypeChecker Type
 declToType (ValTDecl a sig@(TSig _ i _) body) =
     declToType (ValTUDecl a sig [TVarDecl a i body])
 declToType d@(ValTUDecl _ (TSig _ tName params) vs) =
-    let paramIs  = [ i | TParam _ i <- params ]
+    let
+        paramIs  = [ i | TParam _ i <- params ]
         typeVars = map TypeVar paramIs
-    in  case setFromListUnique paramIs of
-            Right _ -> return $ VType tName
-                                      paramIs
-                                      typeVars
-                                      (Set.fromList (getCtorIdents d))
-            Left i -> raise $ Error.conflTypeParam i d
+    in
+        case findDups paramIs of
+            [] -> return $ VType tName
+                                 paramIs
+                                 typeVars
+                                 (Set.fromList (getCtorIdents d))
+            is -> raise $ Error.conflTypeParams is d
 declToType d =
     error $ "This type of type declarations is not supported yet: " ++ show d
 
@@ -85,12 +88,13 @@ declToCtors d@(ValTUDecl _ (TSig _ tName params) vs) =
 variantToTypeCtor
     :: UIdent -> [Type] -> TypeVariantDecl Pos -> TypeChecker TypeCtor
 variantToTypeCtor tName vars (TVarDecl _ ctor body) = case body of
-    DataTBody _ flds _ -> do
+    d@(DataTBody _ flds _) -> do
         let fs = [ f | TFldDecl _ f <- flds ]
-        case setFromListUnique fs of
-            Right _ -> do
+        case findDups (map declI fs) of
+            [] -> do
                 oenv <- mapM declToFld fs
                 return $ TypeCtor tName ctor (Map.fromList oenv)
+            is -> raise $ Error.conflFldNames is d
     TBody{} -> return $ TypeCtor tName ctor Map.empty
   where
     declToFld (THint _ i texpr) = do

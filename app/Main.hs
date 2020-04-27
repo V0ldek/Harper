@@ -63,7 +63,7 @@ run v p s =
                             Ok v ->
                                 putStrLn
                                     $  "\nExecution ended with value:\n"
-                                    ++ (v "")
+                                    ++ v ""
                             Bad s -> do
                                 putStrLn
                                     $  "\nExecution terminated with an error: "

@@ -4,37 +4,22 @@ import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 
-import Harper.Abs
+import           Harper.Abs
 
--- Equivalent of Map.fromList, but fails if the keys are not unique
--- and returns the conflict tuple - key, value1, value2
-mapFromListUnique :: Ord k => [(k, a)] -> Either (k, a, a) (Map.Map k a)
-mapFromListUnique = foldM addIfUnique Map.empty
-  where
-    addIfUnique m (k, a) = case Map.lookup k m of
-        Just a' -> Left (k, a, a')
-        Nothing -> Right (Map.insert k a m)
+findDups :: Ord a => [a] -> [a]
+findDups ds = snd $ foldr checkForDup (Set.empty, []) ds
+ where
+  checkForDup a (s, dups) =
+    if Set.member a s then (s, a : dups) else (Set.insert a s, dups)
 
--- MapFromListUnique but with a selector function.
-mapFromListUniqueBy :: Ord k => (a -> (k, v)) -> [a] -> Either (k, v, v) (Map.Map k v)
-mapFromListUniqueBy f = foldM addIfUnique Map.empty
-  where
-    addIfUnique m a = let (k, v) = f a
-                      in  case Map.lookup k m of
-                              Just v' -> Left (k, v, v')
-                              Nothing -> Right (Map.insert k v m)
-
--- Equivalent of Set.fromList, but fails if the keys are not unique
--- and returns the conflicting key
-setFromListUnique :: Ord k => [k] -> Either k (Set.Set k)
-setFromListUnique = setFromListUniqueBy id
-
--- SetFromListUnique but with a selector function.
-setFromListUniqueBy :: Ord k => (a -> k) -> [a] -> Either a (Set.Set k)
-setFromListUniqueBy f = foldM addIfUnique Set.empty
-  where
-    addIfUnique s a = let k = f a
-                      in if Set.member k s then Left a else Right (Set.insert k s)
+findDupsBy :: Ord k => (a -> k) -> [a] -> ([k], [a])
+findDupsBy f ds = collect $ foldr checkForDup (Map.empty, []) ds
+ where
+  checkForDup a (m, dups) =
+    let k = f a
+    in  if Map.member k m then (m, (k, a) : dups) else (Map.insert k a m, dups)
+  collect (m, dups) =
+    let (ks, as) = unzip dups in (ks, foldr (\k as' -> m Map.! k : as') as ks)
 
 itu :: Ident -> UIdent
 itu (Ident s) = UIdent s
