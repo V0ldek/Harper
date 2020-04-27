@@ -55,15 +55,15 @@ run v p s =
                 putStrLn $ out ""
                 case res of
                     Ok (tree', tenv) -> do
-                        let Out out res = runInterpreter tree' tenv
-                        putStrLn $ out ""
                         putStrLn "\nType check successful."
                         showTree v tree'
+                        let Out out res = runInterpreter tree' tenv
+                        putStrLn $ out ""
                         case res of
                             Ok v ->
                                 putStrLn
-                                    $  "\nExecution ended with value: "
-                                    ++ show v
+                                    $  "\nExecution ended with value:\n"
+                                    ++ (v "")
                             Bad s -> do
                                 putStrLn
                                     $  "\nExecution terminated with an error: "

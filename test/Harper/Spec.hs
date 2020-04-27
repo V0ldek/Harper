@@ -41,8 +41,8 @@ testOutput (TProg prog out) = TestCase
                                     case res' of
                                         Ok v ->
                                             out' (out "")
-                                                ++ "\nExecution ended with value: "
-                                                ++ show v
+                                                ++ "\nExecution ended with value:\n"
+                                                ++ (v"")
                                         Bad s ->
                                             out' (out "")
                                                 ++ "\nExecution terminated with an error: "

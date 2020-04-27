@@ -29,15 +29,16 @@ import           Harper.TypeSystem.GlobalTypes
 import           Harper.Abs.Typed
 import           OutputM
 
-runInterpreter :: Program Meta -> TEnv -> HarperOutput Object
+runInterpreter :: Program Meta -> TEnv -> HarperOutput ShowS
 runInterpreter tree tenv =
     evalStateT (runReaderT (interpret tree) (Env Map.empty tenv)) Map.empty
 
-interpret :: Program Meta -> Interpreter Object
+interpret :: Program Meta -> Interpreter ShowS
 interpret (Prog _ ds) = do
     let fds = [ fd | TopLvlFDecl _ fd <- ds ]
     env <- funDecls fds
-    localObjs (const env) (eval $ ObjExpr (unitT, Nothing) (Ident "main"))
+    o <- localObjs (const env) (eval $ ObjExpr (unitT, Nothing) (Ident "main"))
+    printObj o
 
 fBodyToStmt :: FunBody Meta -> Statement Meta
 fBodyToStmt (FStmtBody _ s) = s
@@ -281,10 +282,8 @@ exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
 exec (DeclStmt _ decl) _ k = do
     oenv <- declLocalUnass decl
     localObjs (const oenv) k
-exec (DconStmt _ (PatDecl _ decl) e) _ k = do
-    val  <- emplaceThunk e
-    oenv <- declLocal' decl (fromJust $ this val)
-    localObjs (const oenv) k
+exec d@(DconStmt _ pat e) _ k =
+    patMatch pat e k (raise $ Error.nonExhPatMatch d)
 
 -- Assignment.
 
@@ -446,3 +445,26 @@ patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
     matchFlds v [] kMatch _ = kMatch
 patMatch' p _ _ _ =
     error $ "Pattern matching this type of patterns is unsupported: " ++ show p
+
+printObj :: Object -> Interpreter ShowS
+printObj p@PInt{}  = return $ shows p
+printObj p@PBool{} = return $ shows p
+printObj p@PStr{}  = return $ shows p
+printObj p@PChar{} = return $ shows p
+printObj PUnit     = return $ shows PUnit
+printObj e@Thunk{} = do
+    o <- evalThunk e
+    printObj o
+printObj (Var (Just ptr)) = do
+    o <- gets (Map.! ptr)
+    printObj o
+printObj (Value t d) = do
+    ss <- mapM showFld (Map.toList d)
+    let s = foldr (.) id (intersperse (" "++) ss)
+    return $ shows t . (" { " ++) . s . (" }" ++)
+  where
+    showFld (i, ptr) = do
+        o <- gets (Map.! ptr)
+        s <- printObj o
+        return $ showsPrt i . (": " ++) . s
+printObj Fun{} = return ("<fun>" ++)
