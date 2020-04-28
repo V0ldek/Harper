@@ -1,6 +1,0 @@
-Error: expression `y` has invalid type 'String'; expected 'Integer'.
-During evaluation of: 
- x * y
-Located at line 5 column 9 
-
-Execution terminated with an error: runtime error.

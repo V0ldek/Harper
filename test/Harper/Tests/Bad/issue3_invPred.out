@@ -1,9 +1,0 @@
-Error: expression `1` has invalid type 'Integer'; expected 'Bool'. 
-During evaluation of: 
-if 1 { 
-    return n ;
-    }
-
-Located at line 2 column 3
-
-Execution terminated with an error: runtime error.

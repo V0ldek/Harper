@@ -1,0 +1,6 @@
+Error: expression `0` evaluated to zero causing a division error.
+During evaluation of:
+ 42 / 0
+Located at line 2 column 8
+
+Execution terminated with an error: runtime error.

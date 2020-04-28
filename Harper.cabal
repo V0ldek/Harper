@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8808b263b33fc260c705b749d1b5a47c0e5222ab529cc62f16efa67bc62a25f4
+-- hash: 81f3a1df12643b675b2d1d354b41ffca5253eec2f3fed4cf8ac438ab06595179
 
 name:           Harper
 version:        0.1.0.0
@@ -29,19 +29,29 @@ library
       ErrM
       Harper.Abs
       Harper.Abs.Pos
-      Harper.Engine
-      Harper.Engine.Alloc
-      Harper.Engine.Conditionals
-      Harper.Engine.Core
-      Harper.Engine.Declarations
-      Harper.Engine.Error
-      Harper.Engine.Expressions
-      Harper.Engine.Output
-      Harper.Engine.Snapshots
-      Harper.Engine.Thunk
+      Harper.Abs.Typed
+      Harper.Error
+      Harper.Expressions
+      Harper.Interpreter
+      Harper.Interpreter.Alloc
+      Harper.Interpreter.Conditionals
+      Harper.Interpreter.Core
+      Harper.Interpreter.Declarations
+      Harper.Interpreter.Snapshots
+      Harper.Interpreter.Thunk
       Harper.Lexer
+      Harper.Output
       Harper.Parser
       Harper.Printer
+      Harper.TypeChecker
+      Harper.TypeSystem.Alloc
+      Harper.TypeSystem.Core
+      Harper.TypeSystem.Declarations
+      Harper.TypeSystem.GlobalTypes
+      Harper.TypeSystem.StaticAnalysis
+      Harper.TypeSystem.Traits
+      Harper.TypeSystem.Typing
+      Harper.Utility
       OutputM
   other-modules:
       Paths_Harper

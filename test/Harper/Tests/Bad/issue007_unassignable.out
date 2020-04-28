@@ -1,0 +1,7 @@
+Error: cannot assign to an immutable value `fun`.
+During evaluation of:
+ fun := \ (n :: Integer)=> n ; 
+
+Located at line 11 column 5
+
+Execution terminated with an error: type error.

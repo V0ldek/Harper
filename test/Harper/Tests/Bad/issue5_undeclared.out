@@ -1,7 +1,0 @@
-Error: undeclared identifier `y`.
-During evaluation of:
-y := y + 1 ;
-
-Located at line 3 column 5
-
-Execution terminated with an error: runtime error.

@@ -1,0 +1,7 @@
+Error: cannot assign to an immutable value `x`.
+During evaluation of:
+x += 1 ;
+
+Located at line 4 column 5
+
+Execution terminated with an error: type error.

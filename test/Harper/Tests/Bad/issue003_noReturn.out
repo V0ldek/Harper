@@ -1,0 +1,10 @@
+Error: control may reach the end of a non Unit valued function without a return statement.
+During evaluation of: 
+{ 
+  if n <= 17 { 
+   return 42 ; 
+   } 
+  }
+Located at line 2 column 7 
+
+Execution terminated with an error: type error.

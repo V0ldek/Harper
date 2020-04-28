@@ -1,0 +1,7 @@
+Error: undeclared identifier `y`.
+During evaluation of:
+y += 1 ;
+
+Located at line 4 column 5
+
+Execution terminated with an error: type error.

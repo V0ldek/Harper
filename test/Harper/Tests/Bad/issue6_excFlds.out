@@ -1,7 +1,0 @@
-Error: unrecognized field identifiers during value construction. Type `List.Empty` has no fields: `head`.
-During evaluation of:
- val Empty { head = 5 }
-
-Located at line 17 column 10
-
-Execution terminated with an error: runtime error.

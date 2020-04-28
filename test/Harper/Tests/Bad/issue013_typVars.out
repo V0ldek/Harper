@@ -1,0 +1,8 @@
+Error: expression `h` has invalid type 'e& -> f&'; expected 'c&'.
+During evaluation of:
+ g h
+
+Located at line 7 column 9
+
+
+Execution terminated with an error: type error.

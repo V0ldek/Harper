@@ -1,0 +1,2 @@
+Execution ended with value:
+Tree.Branch { left: Tree.Branch { left: Tree.Leaf { a: 0 } right: Tree.Branch { left: Tree.Leaf { a: 1 } right: Tree.Leaf { a: 2 } } } right: Tree.Branch { left: Tree.Branch { left: Tree.Branch { left: Tree.Branch { left: Tree.Branch { left: Tree.Leaf { a: 3 } right: Tree.Leaf { a: 4 } } right: Tree.Leaf { a: 5 } } right: Tree.Leaf { a: 6 } } right: Tree.Leaf { a: 7 } } right: Tree.Branch { left: Tree.Leaf { a: 8 } right: Tree.Leaf { a: 9 } } } }

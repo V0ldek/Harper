@@ -6,7 +6,6 @@ module Harper.Printer where
 import Harper.Abs
 import Data.Char
 
-
 -- the top-level printing method
 printTree :: Print a => a -> String
 printTree = render . prt 0
@@ -104,15 +103,16 @@ instance Print (TypeHint a) where
 
 instance Print (TypeExpr a) where
   prt i e = case e of
-    TVar _ id -> prPrec i 3 (concatD [prt 0 id])
-    TCtor _ uident -> prPrec i 3 (concatD [prt 0 uident])
-    TPur _ typepurity -> prPrec i 3 (concatD [prt 0 typepurity])
-    TUnit _ -> prPrec i 3 (concatD [doc (showString "()")])
+    TVar _ id -> prPrec i 2 (concatD [prt 0 id])
+    TCtor _ uident -> prPrec i 2 (concatD [prt 0 uident])
+    TPur _ typepurity -> prPrec i 2 (concatD [prt 0 typepurity])
+    TUnit _ -> prPrec i 2 (concatD [doc (showString "()")])
     TTup _ tupletype -> prPrec i 2 (concatD [doc (showString "("), prt 0 tupletype, doc (showString ")")])
     TAdHoc _ fieldtypeexprs -> prPrec i 2 (concatD [doc (showString "{"), prt 0 fieldtypeexprs, doc (showString "}")])
-    TApp _ typeexpr1 typeexpr2 -> prPrec i 1 (concatD [prt 1 typeexpr1, prt 2 typeexpr2])
+    TApp _ uident typeexprs -> prPrec i 1 (concatD [prt 0 uident, prt 2 typeexprs])
     TFun _ typeexpr1 typeexpr2 -> prPrec i 0 (concatD [prt 1 typeexpr1, doc (showString "->"), prt 0 typeexpr2])
-
+  prtList 2 [x] = (concatD [prt 2 x])
+  prtList 2 (x:xs) = (concatD [prt 2 x, prt 2 xs])
 instance Print (TupleType a) where
   prt i e = case e of
     TTupList _ typeexpr tupletype -> prPrec i 0 (concatD [prt 0 typeexpr, doc (showString ","), prt 0 tupletype])
@@ -131,16 +131,16 @@ instance Print (FieldTypeExpr a) where
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
 instance Print (FunDecl a) where
   prt i e = case e of
-    FDecl _ id funargs funbody -> prPrec i 0 (concatD [prt 0 id, prt 0 funargs, doc (showString "="), prt 0 funbody])
+    FDecl _ id funparams funbody -> prPrec i 0 (concatD [prt 0 id, prt 0 funparams, doc (showString "="), prt 0 funbody])
 
-instance Print (FunArg a) where
+instance Print (FunParam a) where
   prt i e = case e of
-    FArg _ id -> prPrec i 0 (concatD [prt 0 id])
+    FParam _ id -> prPrec i 0 (concatD [prt 0 id])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
-instance Print (LambdaArg a) where
+instance Print (LambdaParam a) where
   prt i e = case e of
-    LamArg _ pattern -> prPrec i 0 (concatD [prt 0 pattern])
+    LamParam _ pattern -> prPrec i 0 (concatD [prt 0 pattern])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
 instance Print (FunBody a) where
@@ -198,7 +198,7 @@ instance Print (Expression a) where
     AndExpr _ expression1 expression2 -> prPrec i 2 (concatD [prt 2 expression1, doc (showString "and"), prt 3 expression2])
     OrExpr _ expression1 expression2 -> prPrec i 2 (concatD [prt 2 expression1, doc (showString "or"), prt 3 expression2])
     SeqExpr _ expression1 expression2 -> prPrec i 1 (concatD [prt 2 expression1, doc (showString "|"), prt 1 expression2])
-    LamExpr _ lambdaargs funbody -> prPrec i 0 (concatD [doc (showString "\\"), prt 0 lambdaargs, doc (showString "=>"), prt 0 funbody])
+    LamExpr _ lambdaparams funbody -> prPrec i 0 (concatD [doc (showString "\\"), prt 0 lambdaparams, doc (showString "=>"), prt 0 funbody])
 
 instance Print (TupleExpression a) where
   prt i e = case e of
@@ -316,7 +316,7 @@ instance Print (LocalObjDecl a) where
 
 instance Print (TypeSignature a) where
   prt i e = case e of
-    TSig _ uident typearguments -> prPrec i 0 (concatD [prt 0 uident, prt 0 typearguments])
+    TSig _ uident typeparameters -> prPrec i 0 (concatD [prt 0 uident, prt 0 typeparameters])
 
 instance Print (TypeDecl a) where
   prt i e = case e of
@@ -324,9 +324,9 @@ instance Print (TypeDecl a) where
     ValTUDecl _ typesignature typevariantdecls -> prPrec i 0 (concatD [doc (showString "value"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typevariantdecls, doc (showString "}")])
     RefTDecl _ typesignature typebody -> prPrec i 0 (concatD [doc (showString "ref"), prt 0 typesignature, doc (showString "="), doc (showString "{"), prt 0 typebody, doc (showString "}")])
 
-instance Print (TypeArgument a) where
+instance Print (TypeParameter a) where
   prt i e = case e of
-    TArg _ id -> prPrec i 0 (concatD [prt 0 id])
+    TParam _ id -> prPrec i 0 (concatD [prt 0 id])
   prtList _ [] = (concatD [])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
 instance Print (TypeVariantDecl a) where

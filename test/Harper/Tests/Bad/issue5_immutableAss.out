@@ -1,7 +1,0 @@
-Error: cannot assign to an immutable variable `x`.
-During evaluation of:
-x := x + 1 ;
-
-Located at line 3 column 5
-
-Execution terminated with an error: runtime error.

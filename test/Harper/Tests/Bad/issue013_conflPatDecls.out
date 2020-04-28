@@ -1,0 +1,10 @@
+Error: conflicting variable identifiers `n` in pattern.
+During evaluation of:
+Bag {
+  b : (n :: Integer), d : (n :: Integer)
+}
+
+Located at line 9 column 3
+
+
+Execution terminated with an error: type error.
