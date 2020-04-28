@@ -238,13 +238,18 @@ exec
     -> (Object -> Interpreter a)
     -> Interpreter a
     -> Interpreter a
-exec (EmptyStmt _           ) _    k = k
-exec (StmtBlock   _ []      ) _    k = k
-exec (StmtBlock a (s : ss)) kRet k = exec s kRet (exec (StmtBlock a ss) kRet k)
+exec (EmptyStmt _   ) _    k = k
+exec (StmtBlock a ss) kRet k = do
+    k'    <- inCurrentScope k
+    kRet' <- inCurrentScope2 kRet
+    execSeq ss kRet' k'
+  where
+    execSeq []       kRet k = k
+    execSeq (s : ss) kRet k = exec s kRet (execSeq ss kRet k)
 
 -- Control flow.
 
-exec (RetExprStmt _ e       ) kRet _ = do
+exec (RetExprStmt _ e) kRet _ = do
     o <- eval e
     kRet o
 exec (RetStmt _   ) kRet _ = kRet PUnit
@@ -460,7 +465,7 @@ printObj (Var (Just ptr)) = do
     printObj o
 printObj (Value t d) = do
     ss <- mapM showFld (Map.toList d)
-    let s = foldr (.) id (intersperse (" "++) ss)
+    let s = foldr (.) id (intersperse (" " ++) ss)
     return $ shows t . (" { " ++) . s . (" }" ++)
   where
     showFld (i, ptr) = do

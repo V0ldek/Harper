@@ -73,6 +73,21 @@ asksTypes f = asks (f . types)
 asksObjs :: (OEnv -> a) -> Interpreter a
 asksObjs f = asks (f . objs)
 
+inCurrentScope :: Interpreter a -> Interpreter (Interpreter a)
+inCurrentScope a = do
+  env <- ask
+  return $ local (const env) a
+
+inCurrentScope2 :: (a -> Interpreter b) -> Interpreter (a -> Interpreter b)
+inCurrentScope2 a = do
+  env <- ask
+  return (local (const env) . a)
+
+inCurrentScope3 :: (a -> b -> Interpreter c) -> Interpreter (a -> b -> Interpreter c)
+inCurrentScope3 a = do
+  env <- ask
+  return ((local (const env) .) . a)
+
 objType :: Object -> String
 objType (PInt  _)      = "Integer"
 objType (PBool _)      = "Bool"
