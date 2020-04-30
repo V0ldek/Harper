@@ -17,6 +17,13 @@ runtimeErr = fail "runtime error."
 typeErr :: HarperOutput a
 typeErr = fail "type error."
 
+invMainType :: HarperOutput a
+invMainType =
+    fail "function `main` has invalid type. Only parameterless mains are valid."
+
+undeclaredMain :: HarperOutput a
+undeclaredMain = fail "function `main` was not declared."
+
 invType
     :: (Position p1, Print p2, Position p2)
     => Type
@@ -413,6 +420,18 @@ invCtor t i ctx = do
         . ("' does not have a constructor `" ++)
         . showsPrt i
         . ("`." ++)
+        )
+        ctx
+    typeErr
+
+sideeffectNotUnitLit
+    :: (Print p1, Position p1, Print p2) => p2 -> p1 -> HarperOutput a
+sideeffectNotUnitLit e ctx = do
+    outputErr
+        (("the expression `" ++)
+        . showsPrt e
+        . ("` of type 'Unit' cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?" ++
+          )
         )
         ctx
     typeErr

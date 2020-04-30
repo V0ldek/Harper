@@ -20,7 +20,7 @@ type CtorStore = Map.Map UIdent TypeCtor
 type TypeStore = Map.Map Ident Type
 
 data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
-data BlockState = BlkSt { reachable :: Bool, rets :: [Type]  } deriving Show
+data BlockState = BlkSt { reachable :: Bool, rets :: [Type], hasSideeffects :: Bool  } deriving Show
 data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord)
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
@@ -30,6 +30,7 @@ data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: 
           | TypeVar Ident
           | TypeBound Ident
           | PType UIdent
+          | SEType
           deriving (Eq, Ord)
 
 data TypeCtor = TypeCtor { tname :: UIdent, ctor :: UIdent, flds :: Map.Map Ident ObjData } deriving (Eq, Ord)
@@ -50,6 +51,7 @@ instance Show Type where
     showsPrec p (TypeVar   i) = showsPrt i
     showsPrec p (TypeBound i) = showsPrt i . ("&" ++)
     showsPrec p (PType     i) = showsPrt i
+    showsPrec p SEType        = ("sideeffect"++)
 
 instance Show TypeCtor where
     showsPrec p (TypeCtor i c _) = showsPrt i . ("." ++) . showsPrt c

@@ -20,7 +20,6 @@ import           Harper.Interpreter.Conditionals
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Declarations
 import           Harper.Expressions
-import           Harper.Interpreter.Snapshots
 import           Harper.Interpreter.Thunk
 import qualified Harper.Error                  as Error
 import           Harper.Output
@@ -31,14 +30,29 @@ import           OutputM
 
 runInterpreter :: Program Meta -> TEnv -> HarperOutput ShowS
 runInterpreter tree tenv =
-    evalStateT (runReaderT (interpret tree) (Env Map.empty tenv)) Map.empty
+    evalStateT (runReaderT (interpret tree) (Env Map.empty tenv)) (St Map.empty 0)
 
 interpret :: Program Meta -> Interpreter ShowS
 interpret (Prog _ ds) = do
     let fds = [ fd | TopLvlFDecl _ fd <- ds ]
-    env <- funDecls fds
-    o <- localObjs (const env) (eval $ ObjExpr (unitT, Nothing) (Ident "main"))
+    globals <- nativeObjs
+    userEnv <- localObjs (const globals) (funDecls fds call)
+    let env = Map.union userEnv globals
+    o <- localObjs (const env) runMain
     printObj o
+
+runMain :: Interpreter Object
+runMain = do
+    lookup <- asksObjs (Map.lookup (Ident "main"))
+    case lookup of
+        Just ptr -> do
+            main <- getsObjs (Map.! ptr)
+            case main of
+                Fun []           body env -> localObjs (const env) body
+                Fun [Ident "()"] body env -> localObjs (const env) body
+                --Thunk e env _ -> localObjs (const env) (eval e)
+                _                         -> raise Error.invMainType
+        Nothing -> raise Error.undeclaredMain
 
 fBodyToStmt :: FunBody Meta -> Statement Meta
 fBodyToStmt (FStmtBody _ s) = s
@@ -62,20 +76,15 @@ eval e@(VCtorExpr _ ctor flds           ) = do
     case lookup of
         Just t@TypeCtor { flds = fldMap } -> do
             _data <- mapM fldAssToData flds
-            if Set.fromList (map fst _data) /= Map.keysSet fldMap
-                then
-                    error
-                    $ "Invalid data ass in vctor. Type check should've caught this."
-                    ++ show e
-                else return $ Value t (Map.fromList _data)
+            return $ Value t (Map.fromList _data)
         Nothing ->
             error
                 $  "Undeclared ctor. Type check should've caught this."
                 ++ show e
   where
     fldAssToData (DataAss _ i e) = do
-        t <- emplaceThunk e
-        return (i, fromJust $ this t)
+        (ptr, _) <- makeThunk e eval
+        return (i, ptr)
 
 -- Object access.
 
@@ -83,7 +92,7 @@ eval e@(ObjExpr _ i) = do
     lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just l -> do
-            o <- gets (Map.! l)
+            o <- getsObjs (Map.! l)
             evalObj o
         Nothing ->
             error
@@ -92,11 +101,11 @@ eval e@(ObjExpr _ i) = do
   where
     evalObj o = case o of
         Var (Just ptr) -> do
-            o' <- gets (Map.! ptr)
+            o' <- getsObjs (Map.! ptr)
             evalObj o'
         Var Nothing     -> raise $ Error.unassVar i e
-        Thunk{}         -> evalThunk o
-        Fun [] body env -> localObjs (const env) (call body)
+        Thunk t         -> t
+        Fun [] body env -> localObjs (const env) body
         _               -> return o
 
 -- Function application.
@@ -116,10 +125,10 @@ eval (SeqExpr _ e1 e2) = do
 eval (LamExpr a params body) = do
     env <- asks objs
     let n     = length params
-        ps    = newvars n env
-        pats  = [ p | LamParam _ p <- params ]
+    ps <- newvars n 
+    let pats  = [ p | LamParam _ p <- params ]
         body' = genMatchChain (zip ps pats) (fBodyToStmt body)
-    return $ Fun ps body' env
+    return $ Fun ps (call body') env
   where
     genMatchChain ((p, pat) : xs) body = MatchStmt
         a
@@ -216,15 +225,18 @@ eval e =
 
 apply :: Object -> Expression Meta -> Interpreter Object
 apply (Fun (p : ps) s env) argV = do
-    arg <- emplaceThunk argV
-    let env' = Map.insert p (fromJust $ this arg) env
+    (ptr, _) <- makeThunk argV eval
+    let env' = Map.insert p ptr env
     case ps of
-        [] -> localObjs (const env') (call s)
+        [] -> localObjs (const env') s
         _  -> return $ Fun ps s env'
-apply _ argV =
+apply (Fun [] s env) (LitExpr _ (UnitLit _)) = localObjs (const env) s
+apply f argV =
     error
         $  "Overapplication at runtime. Type check should have caught this. "
         ++ show argV
+        ++ " "
+        ++ show f
 
 call :: Statement Meta -> Interpreter Object
 call s = exec s return f where f = return PUnit
@@ -296,16 +308,12 @@ exec s@(AssStmt _ i e) kRet k = do
     lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just l -> do
-            o <- gets (Map.! l)
+            o <- getsObjs (Map.! l)
             case o of
                 Var{} -> do
-                    val <- emplaceThunk e
-                    modify (Map.insert l (Var $ this val))
+                    (ptr, _) <- makeThunk e eval
+                    modifyObjs (Map.insert l (Var $ Just ptr))
                     k
-                Thunk{} ->
-                    error
-                        $ "Invalid assignment. Type check should've caught this."
-                        ++ show s
                 o ->
                     error
                         $ "Invalid assignment. Type check should've caught this."
@@ -325,8 +333,13 @@ exec (DivStmt p i e) kRet k =
 exec (PowStmt p i e) kRet k =
     exec (AssStmt p i (PowExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
 
-exec s _ _ = error
-    ("Executing this type of expressions is not implemented yet: " ++ show s)
+exec (EvalStmt _ e) kRet k = do
+    _ <- eval e
+    k
+
+exec s _ _ =
+    error
+        ("Executing this type of statements is not implemented yet: " ++ show s)
 
 evalIntBinOp :: Expression Meta -> Interpreter Object
 evalIntBinOp e = do
@@ -388,14 +401,8 @@ evalCmpOp e = do
                 ++ show e
 
 evalThunk :: Object -> Interpreter Object
-evalThunk (Thunk e env ptr) = do
-    o <- localObjs (const env) (eval e)
-    case ptr of
-        Just l -> do
-            modify (Map.insert l o)
-            return o
-        _ -> return o
-evalThunk o = return o
+evalThunk (Thunk x) = x
+evalThunk o         = return o
 
 -- Continuation passing style - kMatch is called when object matches the pattern, kElse otherwise.
 patMatch
@@ -409,7 +416,7 @@ patMatch p@PatLit{} e kMatch kElse = do
     o <- eval e
     patMatch' p o kMatch kElse
 patMatch (PatDecl _ decl) e kMatch _ = do
-    env <- declLocal decl e
+    env <- declLocal decl e eval
     localObjs (const env) kMatch
 patMatch p@PatCtor{} e kMatch kElse = do
     o <- eval e
@@ -441,7 +448,7 @@ patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
     matchFlds v@(Value t d) (PatFld _ i p : flds) kMatch kElse =
         case Map.lookup i d of
             Just l -> do
-                o <- gets (Map.! l)
+                o <- getsObjs (Map.! l)
                 patMatch' p o (matchFlds v flds kMatch kElse) kElse
             Nothing ->
                 error
@@ -461,7 +468,7 @@ printObj e@Thunk{} = do
     o <- evalThunk e
     printObj o
 printObj (Var (Just ptr)) = do
-    o <- gets (Map.! ptr)
+    o <- getsObjs (Map.! ptr)
     printObj o
 printObj (Value t d) = do
     ss <- mapM showFld (Map.toList d)
@@ -469,7 +476,39 @@ printObj (Value t d) = do
     return $ shows t . (" { " ++) . s . (" }" ++)
   where
     showFld (i, ptr) = do
-        o <- gets (Map.! ptr)
+        o <- getsObjs (Map.! ptr)
         s <- printObj o
         return $ showsPrt i . (": " ++) . s
 printObj Fun{} = return ("<fun>" ++)
+
+
+-- Native functions.
+
+nativeObjs :: Interpreter OEnv
+nativeObjs = do
+    let (is, objs) = unzip decls
+        n          = length is
+    ls <- newlocs n
+    let lsobjs = zip ls objs
+    modifyObjs (Map.union $ Map.fromList lsobjs)
+    return $ Map.fromList (zip is ls)
+  where
+    p1 = Ident "a"
+    se = Ident "()"
+    decls =
+        [ (Ident "print"  , Fun [p1, se] printBody Map.empty)
+        , (Ident "printLn", Fun [p1, se] printLnBody Map.empty)
+        ]
+    printBody = do
+        o <- getObj p1
+        s <- printObj o
+        raise $ output s
+        return PUnit
+    printLnBody = do
+        o <- getObj p1
+        s <- printObj o
+        raise $ output (s . ("\n" ++))
+        return PUnit
+    getObj i = do
+        l <- asksObjs (Map.! i)
+        getsObjs (Map.! l)

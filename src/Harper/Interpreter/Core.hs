@@ -18,21 +18,25 @@ import           OutputM
 type Ptr = Int
 
 type OEnv = Map.Map Ident Ptr
-type Store = Map.Map Ptr Object
 type TEnv = Map.Map UIdent TypeCtor
+type ObjStore = Map.Map Ptr Object
+data Store = St { objStore  :: ObjStore, varSrc :: Int }
 data Env = Env { objs :: OEnv,
-                 types :: TEnv } deriving (Show, Eq)
+                 types :: TEnv } deriving Show
 
 type Interpreter = ReaderT Env (StateT Store (Output ShowS))
 
+type Eval = Expression Meta -> Interpreter Object
+
 type Meta = TypeMetaData Pos
 
+meta :: Expression Meta -> Meta
+meta e = (typ e, pos e)
+
 data Object = Fun { params :: [Ident],
-                    body :: Statement Meta,
+                    body :: Interpreter Object,
                     env :: OEnv }
-            | Thunk { expr :: Expression Meta,
-                      env :: OEnv,
-                      this :: Maybe Ptr }
+            | Thunk (Interpreter Object)
             | Value { _type :: TypeCtor, _data :: OEnv }
             | Var   { ptr :: Maybe Ptr }
             | PInt Integer
@@ -40,7 +44,6 @@ data Object = Fun { params :: [Ident],
             | PStr String
             | PChar Char
             | PUnit
-            deriving Eq
 
 instance Show Object where
   show (PInt  n    ) = show n
@@ -49,11 +52,10 @@ instance Show Object where
   show (PStr  s    ) = s
   show (PChar c    ) = show c
   show PUnit         = "()"
-  show (Thunk e env ptr) =
-    "Thunk " ++ show e ++ " " ++ show env ++ " " ++ show ptr
-  show (Var o      ) = "Var " ++ show o
+  show (Thunk x    ) = "Thunk"
+  show (Var   o    ) = "Var " ++ show o
   show (Value t d  ) = show t ++ " " ++ showData d
-  show (Fun p b env) = "Fun " ++ show p ++ " " ++ show b ++ " " ++ show env
+  show (Fun p b env) = "Fun " ++ show p ++ " " ++ show env
 
 showData :: OEnv -> String
 showData d =
@@ -73,6 +75,12 @@ asksTypes f = asks (f . types)
 asksObjs :: (OEnv -> a) -> Interpreter a
 asksObjs f = asks (f . objs)
 
+getsObjs :: (ObjStore -> a) -> Interpreter a
+getsObjs f = gets (f . objStore)
+
+modifyObjs :: (ObjStore -> ObjStore) -> Interpreter ()
+modifyObjs f = modify (\st -> st { objStore = f $ objStore st })
+
 inCurrentScope :: Interpreter a -> Interpreter (Interpreter a)
 inCurrentScope a = do
   env <- ask
@@ -83,7 +91,8 @@ inCurrentScope2 a = do
   env <- ask
   return (local (const env) . a)
 
-inCurrentScope3 :: (a -> b -> Interpreter c) -> Interpreter (a -> b -> Interpreter c)
+inCurrentScope3
+  :: (a -> b -> Interpreter c) -> Interpreter (a -> b -> Interpreter c)
 inCurrentScope3 a = do
   env <- ask
   return ((local (const env) .) . a)
@@ -103,16 +112,16 @@ objType _              = "undefined"
 varKey :: String
 varKey = "~var"
 
-newvars :: Int -> OEnv -> [Ident]
-newvars n env = case Map.lookupMax env of
-  Nothing           -> genVarsFrom 1
-  Just (Ident k, _) -> case stripPrefix varKey k of
-    Nothing -> genVarsFrom 1
-    Just v  -> genVarsFrom (read v + 1)
-  where genVarsFrom v = map (\v' -> Ident (varKey ++ show v')) [v .. v + n - 1]
+newvars :: Int -> Interpreter [Ident]
+newvars n = do
+  v <- gets varSrc
+  modify (\st -> st { varSrc = v + n })
+  return $ map (\v' -> Ident (varKey ++ show v')) [v .. v + n - 1]
 
-newvar :: OEnv -> Ident
-newvar env = let [var] = newvars 1 env in var
+newvar :: Interpreter Ident
+newvar = do
+  var <- newvars 1
+  return $ head var
 
 raise :: HarperOutput a -> Interpreter a
 raise = lift . lift
