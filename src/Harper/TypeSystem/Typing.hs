@@ -16,6 +16,7 @@ import           Harper.TypeSystem.Core
 import           Harper.Utility
 
 arity :: Type -> Int
+arity (FType SEType r) = arity r
 arity (FType _ r) = 1 + arity r
 arity _           = 0
 

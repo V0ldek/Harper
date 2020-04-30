@@ -1,0 +1,9 @@
+Error: cannot match function's `printAndRet` declared type 'Integer -> Integer' with its actual type 'Integer -> (sideeffect -> Integer)'.
+During evaluation of:
+printAndRet n = {
+  eval printLn n () ;
+  return n ;
+}
+Located at line 2 column 1
+
+Execution terminated with an error: type error.

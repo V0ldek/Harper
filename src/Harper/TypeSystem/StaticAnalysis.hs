@@ -12,11 +12,11 @@ import           Harper.Abs
 import           Harper.TypeSystem.Core
 
 instance Semigroup BlockState where
-    (BlkSt reachable1 rets1) <> (BlkSt reachable2 rets2) =
-        BlkSt (reachable1 || reachable2) (rets1 ++ rets2)
+    (BlkSt reachable1 rets1 se1) <> (BlkSt reachable2 rets2 se2) =
+        BlkSt (reachable1 || reachable2) (rets1 ++ rets2) (se1 || se2)
 
 instance Monoid BlockState where
-    mempty = BlkSt False []
+    mempty = BlkSt False [] False
 
 modifyBlkSt :: (BlockState -> BlockState) -> TypeChecker ()
 modifyBlkSt f = modify (\st -> st { blkSt = f (blkSt st) })
@@ -28,7 +28,7 @@ getBlkSt :: TypeChecker BlockState
 getBlkSt = getsBlkSt id
 
 clearBlkSt :: TypeChecker ()
-clearBlkSt = modifyBlkSt (const (BlkSt True []))
+clearBlkSt = modifyBlkSt (const (BlkSt True [] False))
 
 blockScope :: TypeChecker a -> TypeChecker (a, BlockState)
 blockScope a = do
@@ -44,10 +44,14 @@ addRet t = modifyBlkSt (\st -> st { rets = t : rets st })
 unreachable :: TypeChecker ()
 unreachable = modifyBlkSt (\st -> st { reachable = False })
 
+sideeffect :: TypeChecker ()
+sideeffect = modifyBlkSt (\st -> st { hasSideeffects = True })
+
 mayEnterOneOf :: [BlockState] -> TypeChecker ()
 mayEnterOneOf bs = do
     let b = mconcat bs
     forM_ (rets b) addRet
+    when (hasSideeffects b) sideeffect
 
 mustEnterOneOf :: [BlockState] -> TypeChecker ()
 mustEnterOneOf bs = do

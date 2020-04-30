@@ -23,6 +23,7 @@ import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.TypeSystem.Alloc
 import           Harper.TypeSystem.Core
+import           Harper.TypeSystem.GlobalTypes
 import           Harper.Utility
 
 getCtorIdents :: TypeDecl Pos -> [UIdent]
@@ -184,6 +185,7 @@ parseType e@(TApp _ u es) = do
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e
         Nothing         -> raise $ Error.undeclaredType u e
+parseType (TPur _ (TSideE _)) = return SEType
 
 parseType t =
     error $ "This type of type declarations is not supported: " ++ show t

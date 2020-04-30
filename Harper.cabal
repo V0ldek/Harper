@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 81f3a1df12643b675b2d1d354b41ffca5253eec2f3fed4cf8ac438ab06595179
+-- hash: f0fe4eaf472121631e9ae194f16abb76e42855db5ea795aec6a5baa4b98deda9
 
 name:           Harper
 version:        0.1.0.0
@@ -37,7 +37,6 @@ library
       Harper.Interpreter.Conditionals
       Harper.Interpreter.Core
       Harper.Interpreter.Declarations
-      Harper.Interpreter.Snapshots
       Harper.Interpreter.Thunk
       Harper.Lexer
       Harper.Output
@@ -47,6 +46,7 @@ library
       Harper.TypeSystem.Alloc
       Harper.TypeSystem.Core
       Harper.TypeSystem.Declarations
+      Harper.TypeSystem.GlobalDeclarations
       Harper.TypeSystem.GlobalTypes
       Harper.TypeSystem.StaticAnalysis
       Harper.TypeSystem.Traits

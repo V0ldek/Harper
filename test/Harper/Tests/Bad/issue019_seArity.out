@@ -1,0 +1,10 @@
+Error: function `main` has a type 'sideeffect -> Unit', which is of arity 0, but it declares 1 formal parameters.
+During evaluation of:
+main n = {
+  (unit :: ())= () ;
+  eval printLn "Bang!" unit ;
+  }
+
+Located at line 2 column 1
+
+Execution terminated with an error: type error.

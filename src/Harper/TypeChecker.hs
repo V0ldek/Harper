@@ -15,6 +15,7 @@ import           Harper.Output
 import           Harper.Printer                 ( Print(..) )
 import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.Declarations
+import           Harper.TypeSystem.GlobalDeclarations
 import           Harper.TypeSystem.GlobalTypes
 import           Harper.TypeSystem.StaticAnalysis
 import           Harper.TypeSystem.Traits
@@ -27,7 +28,7 @@ runTypeChecker
     -> HarperOutput (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
 runTypeChecker tree = evalStateT
     (runReaderT (typeCheck tree) (Env Map.empty))
-    (St (BlkSt True []) 0 Map.empty Map.empty Map.empty)
+    (St (BlkSt True [] False) 0 Map.empty Map.empty Map.empty)
 
 typeCheck
     :: Program Pos
@@ -38,8 +39,9 @@ typeCheck p@(Prog a ds) = do
         fs  = [ f | TopLvlFDecl _ f <- ds ]
     loadTypes globalTypes
     declTypes tds
+    globalEnv    <- declareGlobals
     (fts', oenv) <- declares fts
-    fs'          <- mapM (localObjs (const oenv) . annotate) fs
+    fs' <- mapM (localObjs (const $ Map.union oenv globalEnv) . annotate) fs
     ctors        <- gets tCtors
     return (toProg ds fts' fs', ctors)
   where
@@ -68,21 +70,22 @@ annotate d@(FDecl a i params body) = do
                         (params', tBody) <- uncurryType t' params
                         paramEnv         <- declareFromList
                             [ (i, typ p) | p@(FParam _ i) <- params' ]
-                        body' <- localObjs (Map.union paramEnv)
-                                           (annotateBody body)
-                        let tBody' = typ body'
-                            t''    = curryType (map typ params') tBody'
+                        (body', bodySt) <- localObjs (Map.union paramEnv)
+                                                     (annotateBody body)
+                        let params'' = funParams params' bodySt
+                            t''      = curryType (map typ params'') (typ body')
                         if canUnify t' t''
                             then return
-                                $ FDecl (annWith unitT a) i params' body'
+                                $ FDecl (annWith unitT a) i params'' body'
                             else raise $ Error.funInvType i t t'' d
         Just o | null params -> do
-            body' <- annotateBody body
-            let t   = objType o
-                t'  = bindAllVars t
-                t'' = typ body'
+            (body', bodySt) <- annotateBody body
+            let t      = objType o
+                t'     = bindAllVars t
+                params = funParams [] bodySt
+                t''    = curryType (map typ params) (typ body')
             if canUnify t' t''
-                then return $ FDecl (annWith unitT a) i [] body'
+                then return $ FDecl (annWith unitT a) i params body'
                 else raise $ Error.funInvType i t t'' d
         Just o  -> raise $ Error.nonFunDeclWithParams i (objType o) d
         Nothing -> raise $ Error.funWOutType i d
@@ -167,9 +170,10 @@ annotateExpr e@(SeqExpr a e1 e2) = do
 -- Lambda expressions.
 
 annotateExpr e@(LamExpr a params body) = do
-    (params', oenv) <- annotateParams
-    body'           <- localObjs (Map.union oenv) (annotateBody body)
-    let t = curryType (map typ params') (typ body')
+    (params', oenv  ) <- annotateParams
+    (body'  , bodySt) <- localObjs (Map.union oenv) (annotateBody body)
+    let params'' = lamParams params' bodySt
+        t        = curryType (map typ params') (typ body')
     return $ LamExpr (annWith t a) params' body'
   where
     annotateParams = do
@@ -359,7 +363,13 @@ annotateAppExpr e a e1 e2 = do
     case t1 of
         FType p r -> case unify p t2 of
             Just subst -> return (annWith (apply subst r) a, e1', e2')
-            Nothing    -> raise $ Error.invType t2 p e2 e
+            Nothing | p == SEType && t2 == unitT -> case e2 of
+                    LitExpr _ (UnitLit _) -> 
+                        do
+                        sideeffect
+                        return (annWith r a, e1', e2')
+                    _ -> raise $ Error.sideeffectNotUnitLit e2 e
+            Nothing -> raise $ Error.invType t2 p e2 e
         _ -> raise $ Error.invApp t1 e
 
 annotateMatchExprClause
@@ -426,21 +436,24 @@ annotatePat p@(PatCtor a i flds) = do
                     Nothing -> raise $ Error.patInvType t'' t' e
             Nothing -> raise $ Error.invFldAcc ctor i p
 
+annotateBody
+    :: FunBody Pos -> TypeChecker (FunBody (TypeMetaData Pos), BlockState)
 annotateBody body = case body of
     FExprBody a e -> do
         e' <- annotateExpr e
-        return $ FExprBody (annWith (typ e') a) e'
+        return (FExprBody (annWith (typ e') a) e', mempty)
     FStmtBody a s -> do
-        (s', t) <- annotateStmtBody s
-        return $ FStmtBody (annWith t a) s'
+        (s', t, bodySt) <- annotateStmtBody s
+        return (FStmtBody (annWith t a) s', bodySt)
 
 annotateStmtBody
-    :: Statement Pos -> TypeChecker (Statement (TypeMetaData Pos), Type)
+    :: Statement Pos
+    -> TypeChecker (Statement (TypeMetaData Pos), Type, BlockState)
 annotateStmtBody s = do
     clearBlkSt
     (s', bodySt) <- blockScope (analStmt s)
     t            <- unifyRets (reachable bodySt) (rets bodySt)
-    return (s', t)
+    return (s', t, bodySt)
   where
     unifyRets reachable []
         | reachable
@@ -566,6 +579,12 @@ analStmt s@(PowStmt a i e) = do
     e' <- analAss i e s
     return $ PowStmt (annWith unitT a) i e'
 
+analStmt (EvalStmt a e) = do
+    e' <- annotateExpr e
+    return (EvalStmt (annWith unitT a) e')
+
+analStmt s = error $ "This type of statements is not supported yet: " ++ show s
+
 analAss
     :: (Print p, Position p)
     => Ident
@@ -625,3 +644,19 @@ analElse :: ElseStatement Pos -> TypeChecker (ElseStatement (TypeMetaData Pos))
 analElse c@(ElseStmt a s) = do
     s' <- analStmt s
     return $ ElseStmt (annWith unitT a) s'
+
+funParams
+    :: [FunParam (TypeMetaData Pos)]
+    -> BlockState
+    -> [FunParam (TypeMetaData Pos)]
+funParams ps st | hasSideeffects st =
+    ps ++ [FParam (SEType, Nothing) (Ident "()")]
+funParams ps _ = ps
+
+lamParams
+    :: [LambdaParam (TypeMetaData Pos)]
+    -> BlockState
+    -> [LambdaParam (TypeMetaData Pos)]
+lamParams ps st | hasSideeffects st =
+    ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
+lamParams ps _ = ps

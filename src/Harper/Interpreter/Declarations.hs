@@ -15,8 +15,8 @@ import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Thunk
 
-funDecls :: [FunDecl Meta] -> Interpreter OEnv
-funDecls ds = do
+funDecls :: [FunDecl Meta] -> (Statement Meta -> Interpreter Object) -> Interpreter OEnv
+funDecls ds interp = do
     st  <- get
     env <- asks objs
     let n = length ds
@@ -27,22 +27,19 @@ funDecls ds = do
         fobjs = map (declToFun (Map.union env' env)) ds
         lsfs  = zip ls fobjs
         st'   = Map.fromList lsfs
-    modify (Map.union st')
+    modifyObjs (Map.union st')
     return env'
   where
     declToFun env (FDecl _ i params (FExprBody a body)) =
         case paramIs params of
-            [] -> Thunk body env Nothing
-            ps -> Fun ps (RetExprStmt a body) env
+            ps -> Fun ps (interp $ RetExprStmt a body) env
     declToFun env (FDecl _ i params (FStmtBody _ body)) =
-        Fun (paramIs params) body env
+        Fun (paramIs params) (interp body) env
     paramIs ps = [ i | FParam _ i <- ps ]
 
-declLocal :: LocalObjDecl Meta -> Expression Meta -> Interpreter OEnv
-declLocal decl e = do
-    val <- makeThunk e
-    l   <- newloc
-    modify (Map.insert l val)
+declLocal :: LocalObjDecl Meta -> Expression Meta -> Eval -> Interpreter OEnv
+declLocal decl e eval = do
+    (l, _) <- makeThunk e eval
     declLocal' decl l
 
 declLocal' :: LocalObjDecl Meta -> Ptr -> Interpreter OEnv
@@ -53,7 +50,7 @@ declLocal' decl l = do
             let var = Var (Just l)
                 i   = declId d
             l' <- newloc
-            modify (Map.insert l' var)
+            modifyObjs (Map.insert l' var)
             return $ Map.insert i l' env
         LocValDecl _ d -> let i = declId d in return $ Map.insert i l env
 
@@ -63,7 +60,7 @@ declLocalUnass (LocVarDecl _ d) = do
     l   <- newloc
     let var = Var Nothing
         i   = declId d
-    modify (Map.insert l var)
+    modifyObjs (Map.insert l var)
     return $ Map.insert i l env
 declLocalUnass d =
     error
