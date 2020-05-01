@@ -1,5 +1,22 @@
-Error: conflicting ctor names `Empty`, `NonEmpty`.
+Error: conflicting type variant names `Empty`, `NonEmpty`.
 Conflicting declarations:
+value List a = {
+  variant Empty = {
+    } ;
+  variant NonEmpty = {
+    data = {
+      head :: a ;
+      }
+    } ;
+  variant NonEmpty = {
+    data = {
+      head :: a ;
+      tail :: List a ;
+      }
+    } ;
+  }
+
+Located at line 1 column 1
 value Bag a b c d = {
   variant Empty = {
     } ;
@@ -14,57 +31,6 @@ value Bag a b c d = {
   }
 
 Located at line 18 column 1
-value List a = {
-  variant Empty = {
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      }
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      tail :: List a ;
-      }
-    } ;
-  }
-
-Located at line 1 column 1
-value List a = {
-  variant Empty = {
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      }
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      tail :: List a ;
-      }
-    } ;
-  }
-
-Located at line 1 column 1
-value List a = {
-  variant Empty = {
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      }
-    } ;
-  variant NonEmpty = {
-    data = {
-      head :: a ;
-      tail :: List a ;
-      }
-    } ;
-  }
-
-Located at line 1 column 1
 
 
 Execution terminated with an error: type error.

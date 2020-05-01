@@ -1,4 +1,4 @@
-Error: function `main` has a type 'sideeffect -> Unit', which is of arity 0, but it declares 1 formal parameters.
+Error: function `main` has a type `sideeffect -> Unit`, which is of arity 0, but it declares 1 formal parameters.
 During evaluation of:
 main n = {
   (unit :: ())= () ;

@@ -1,6 +1,7 @@
--- Most of the code in this module is inspired or straight up copied
--- from "Typing Haskell in Haskell", Mark P. Jones, https://web.cecs.pdx.edu/~mpj/thih/
--- The code is simpler since Harper has no concept of kinds and all type constructors are always fully applied.
+-- Some of the code in this module is inspired by
+-- "Typing Haskell in Haskell", Mark P. Jones, https://web.cecs.pdx.edu/~mpj/thih/
+-- The code is much simpler since Harper doesn't do type reconstruction
+-- and has no concept of kinds and all type constructors are always fully applied.
 module Harper.TypeSystem.Typing where
 import           Control.Monad
 import           Control.Monad.Reader
@@ -17,13 +18,14 @@ import           Harper.Utility
 
 arity :: Type -> Int
 arity (FType SEType r) = arity r
-arity (FType _ r) = 1 + arity r
-arity _           = 0
+arity (FType _      r) = 1 + arity r
+arity _                = 0
+
+bindVars :: [Ident] -> Type -> Type
+bindVars vars = apply (Map.fromList (map (\i -> (i, TypeBound i)) vars))
 
 bindAllVars :: Type -> Type
-bindAllVars t =
-    let fv = tVars t
-    in  apply (Map.fromList (map (\i -> (i, TypeBound i)) fv)) t
+bindAllVars t = bindVars (tVars t) t
 
 bindAllVarsInOEnv :: OEnv -> TypeChecker ()
 bindAllVarsInOEnv oenv = forM_ (Map.elems oenv) bindOne
@@ -50,15 +52,16 @@ class Types t where
     tVars :: t -> [Ident]
 
 instance Types Type where
-    apply s v@(TypeVar i)           = fromMaybe v (Map.lookup i s)
-    apply s v@VType { args = args } = v { args = apply s args }
-    apply s (FType p r)             = FType (apply s p) (apply s r)
-    apply s t                       = t
+    apply s v@(TypeVar i) = fromMaybe v (Map.lookup i s)
+    apply s v@(VType _ _ args _ membs) =
+        v { args = apply s args, membs = Map.map (apply s) membs }
+    apply s (FType p r) = FType (apply s p) (apply s r)
+    apply s t           = t
 
-    tVars (TypeVar i       ) = [i]
-    tVars (VType _ _ args _) = tVars args
-    tVars (FType p r       ) = tVars p `union` tVars r
-    tVars t                  = []
+    tVars (TypeVar i         ) = [i]
+    tVars (VType _ _ args _ _) = tVars args
+    tVars (FType p r         ) = tVars p `union` tVars r
+    tVars t                    = []
 
 instance Types ObjData where
     apply s (Obj t b) = Obj (apply s t) b
@@ -84,9 +87,10 @@ unify (FType p1 r1) (FType p2 r2) = do
     s1 <- unify p1 p2
     s2 <- unify (apply s1 r1) (apply s1 r2)
     return $ catSubst s1 s2
-unify (VType i1 _ ps1 _) (VType i2 _ ps2 _) | i1 == i2 = foldM accSubst
-                                                               Map.empty
-                                                               (zip ps1 ps2)
+unify (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 = foldM
+    accSubst
+    Map.empty
+    (zip ps1 ps2)
   where
     accSubst s (p1, p2) = do
         s' <- unify (apply s p1) (apply s p2)

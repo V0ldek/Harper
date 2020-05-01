@@ -1,4 +1,4 @@
-Error: all fields must be assigned during value construction. Unassigned fields for 'List.NonEmpty' are: `tail`.
+Error: all fields must be assigned during value construction. Unassigned fields for `List.NonEmpty` are: `tail`.
 During evaluation of:
  val NonEmpty { head = 5 }
 

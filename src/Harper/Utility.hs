@@ -20,7 +20,7 @@ findDupsBy f ds = collect $ foldr checkForDup (Map.empty, []) ds
     in  if Map.member k m then (m, (k, a) : dups) else (Map.insert k a m, dups)
   collect (m, dups) =
     let (ks, as) = unzip dups in (ks, foldr (\k as' -> m Map.! k : as') as ks)
-
+    
 itu :: Ident -> UIdent
 itu (Ident s) = UIdent s
 

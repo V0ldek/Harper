@@ -1,0 +1,8 @@
+Error: cannot unify conflicting types: `a -> Integer`, `a -> a` resulting from declarations of the member `foo` of the type `T`.
+Conflicting declarations:
+ foo :: a -> a
+Located at line 3 column 9
+ foo :: a -> Integer
+Located at line 8 column 9
+
+Execution terminated with an error: type error.

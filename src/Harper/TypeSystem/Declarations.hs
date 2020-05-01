@@ -24,6 +24,7 @@ import           Harper.Output
 import           Harper.TypeSystem.Alloc
 import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.GlobalTypes
+import           Harper.TypeSystem.Typing
 import           Harper.Utility
 
 getCtorIdents :: TypeDecl Pos -> [UIdent]
@@ -35,11 +36,13 @@ getCtorIdents d =
 
 declTypes :: [TypeDecl Pos] -> TypeChecker ()
 declTypes ds = do
-    () <- assertUniqueNames
-    () <- assertUniqueCtors
+    ()   <- assertUniqueNames
+    ()   <- assertUniqueCtors
+    -- Load empty signatures first so that member declarations see all types.
+    sigs <- mapM declToSig ds
+    loadTypes (toStore sigs)
     ts <- mapM declToType ds
-    let tStore = Map.fromList [ (uti i, t) | t@(VType i _ _ _) <- ts ]
-    loadTypes tStore
+    loadTypes (toStore ts)
     ctors <- mapM declToCtors ds
     let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
     modify (\st -> st { tCtors = ctorStore })
@@ -61,21 +64,47 @@ declTypes ds = do
         error
             $  "This type of type declarations is not supported yet: "
             ++ show d
+    toStore ts = Map.fromList [ (uti i, t) | t@(VType i _ _ _ _) <- ts ]
+
+declToSig :: TypeDecl Pos -> TypeChecker Type
+declToSig d@(ValTDecl a sig@(TSig _ i _) body) =
+    declToSig (ValTUDecl a sig [TVarDecl a i body])
+declToSig d@(ValTUDecl _ sig@(TSig _ i params) _) = do
+    let paramIs  = [ i | TParam _ i <- params ]
+        typeVars = map TypeVar paramIs
+    case findDups paramIs of
+        [] -> return $ VType i paramIs typeVars Set.empty Map.empty
+        is -> raise $ Error.conflTypeParams is d
 
 declToType :: TypeDecl Pos -> TypeChecker Type
 declToType (ValTDecl a sig@(TSig _ i _) body) =
     declToType (ValTUDecl a sig [TVarDecl a i body])
-declToType d@(ValTUDecl _ (TSig _ tName params) vs) =
-    let
-        paramIs  = [ i | TParam _ i <- params ]
-        typeVars = map TypeVar paramIs
-    in
-        case findDups paramIs of
-            [] -> return $ VType tName
-                                 paramIs
-                                 typeVars
-                                 (Set.fromList (getCtorIdents d))
-            is -> raise $ Error.conflTypeParams is d
+declToType d@(ValTUDecl _ (TSig _ tName _) vs) = do
+    t         <- declToSig d
+    membTypes <- foldM collectMembs Map.empty vs
+    membs     <- mapM (unionMemb (params t)) (Map.toList membTypes)
+    return $ t { ctors = Set.fromList (getCtorIdents d)
+               , membs = Map.fromList membs
+               }
+  where
+    collectMembs acc (TVarDecl _ ctor body) =
+        let membs = case body of
+                DataTBody _ _ membs -> membs
+                TBody _ membs       -> membs
+        in  collectMembs' ctor acc [ th | TMemTHint _ th <- membs ]
+    collectMembs' ctor acc membs =
+        case findDupsBy (\(THint _ i _) -> i) membs of
+            ([], []) ->
+                let sigs = map (\th -> (declI th, [th])) membs
+                in  return $ Map.unionWith (++) (Map.fromList sigs) acc
+            (is, ms) -> raise $ Error.conflMembNames is ctor ms
+    unionMemb tParams (i, ths) = do
+        ts <- mapM (\(THint _ _ tExpr) -> parseType tExpr) ths
+        let boundTs = map (bindVars tParams) ts
+        case unifys boundTs of
+            Just subst -> return (i, apply subst (head ts))
+            Nothing    -> raise $ Error.conflMembTypes tName i ts ths
+
 declToType d =
     error $ "This type of type declarations is not supported yet: " ++ show d
 
@@ -89,7 +118,7 @@ declToCtors d@(ValTUDecl _ (TSig _ tName params) vs) =
 variantToTypeCtor
     :: UIdent -> [Type] -> TypeVariantDecl Pos -> TypeChecker TypeCtor
 variantToTypeCtor tName vars (TVarDecl _ ctor body) = case body of
-    d@(DataTBody _ flds _) -> do
+    d@(DataTBody _ flds membs) -> do
         let fs = [ f | TFldDecl _ f <- flds ]
         case findDups (map declI fs) of
             [] -> do
@@ -177,11 +206,12 @@ parseType e@(TApp _ u es) = do
     lookup <- getsTypes (Map.lookup $ uti u)
     let n = length es
     case lookup of
-        Just t@(VType _ params _ c) -> if length params /= n
+        Just t@(VType _ params _ c membs) -> if length params /= n
             then raise $ Error.typeInvArity t (length params) n e
             else do
                 tArgs <- mapM parseType es
-                return $ VType u params tArgs c
+                let subst = Map.fromList (zip params tArgs)
+                return $ VType u params tArgs c (Map.map (apply subst) membs)
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e
         Nothing         -> raise $ Error.undeclaredType u e

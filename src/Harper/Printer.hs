@@ -6,6 +6,7 @@ module Harper.Printer where
 import Harper.Abs
 import Data.Char
 
+
 -- the top-level printing method
 printTree :: Print a => a -> String
 printTree = render . prt 0
@@ -161,23 +162,22 @@ instance Print (Literal a) where
     StrLit _ str -> prPrec i 0 (concatD [prt 0 str])
     BoolLit _ boolliteral -> prPrec i 0 (concatD [prt 0 boolliteral])
 
-instance Print (Qualifier a) where
+instance Print (MemberAccess a) where
   prt i e = case e of
-    Qual _ id -> prPrec i 1 (concatD [prt 0 id, doc (showString ".")])
-    Quals _ qualifier1 qualifier2 -> prPrec i 0 (concatD [prt 0 qualifier1, prt 1 qualifier2])
-    ThisQual _ -> prPrec i 0 (concatD [doc (showString "this"), doc (showString ".")])
-    DataQual _ -> prPrec i 0 (concatD [doc (showString "this"), doc (showString "."), doc (showString "data"), doc (showString ".")])
-
+    MembAcc _ id -> prPrec i 0 (concatD [doc (showString "."), prt 0 id])
+  prtList _ [x] = (concatD [prt 0 x])
+  prtList _ (x:xs) = (concatD [prt 0 x, doc (showString "."), prt 0 xs])
 instance Print (Expression a) where
   prt i e = case e of
-    ThisExpr _ -> prPrec i 12 (concatD [doc (showString "this")])
+    ThisExpr _ -> prPrec i 13 (concatD [doc (showString "this")])
+    TupExpr _ tupleexpression -> prPrec i 13 (concatD [doc (showString "("), prt 0 tupleexpression, doc (showString ")")])
+    LitExpr _ literal -> prPrec i 13 (concatD [prt 0 literal])
+    ObjExpr _ id -> prPrec i 13 (concatD [prt 0 id])
+    TMembExpr _ uident memberaccesss -> prPrec i 12 (concatD [prt 0 uident, prt 0 memberaccesss])
+    MembExpr _ expression memberaccesss -> prPrec i 12 (concatD [prt 13 expression, prt 0 memberaccesss])
+    DataExpr _ memberaccesss -> prPrec i 12 (concatD [doc (showString "this.data"), prt 0 memberaccesss])
     AdHocExpr _ adhocfielddecls -> prPrec i 11 (concatD [doc (showString "val"), doc (showString "{"), prt 0 adhocfielddecls, doc (showString "}")])
     VCtorExpr _ uident fieldasss -> prPrec i 11 (concatD [doc (showString "val"), prt 0 uident, doc (showString "{"), prt 0 fieldasss, doc (showString "}")])
-    TupExpr _ tupleexpression -> prPrec i 11 (concatD [doc (showString "("), prt 0 tupleexpression, doc (showString ")")])
-    LitExpr _ literal -> prPrec i 11 (concatD [prt 0 literal])
-    ObjExpr _ id -> prPrec i 11 (concatD [prt 0 id])
-    CtorExpr _ uident -> prPrec i 11 (concatD [prt 0 uident])
-    QObjExpr _ qualifier id -> prPrec i 11 (concatD [prt 0 qualifier, prt 0 id])
     MatchExpr _ expression matchexpressionclauses -> prPrec i 10 (concatD [doc (showString "match"), prt 11 expression, doc (showString "{"), prt 0 matchexpressionclauses, doc (showString "}")])
     AppExpr _ expression1 expression2 -> prPrec i 9 (concatD [prt 9 expression1, prt 11 expression2])
     CompExpr _ expression1 expression2 -> prPrec i 8 (concatD [prt 8 expression1, doc (showString "@"), prt 9 expression2])
@@ -208,7 +208,6 @@ instance Print (TupleExpression a) where
 instance Print (MatchExpressionClause a) where
   prt i e = case e of
     MatchExprClause _ pattern expression -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 0 expression])
-  prtList _ [] = (concatD [])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, doc (showString ","), prt 0 xs])
 instance Print (FieldAss a) where
@@ -240,20 +239,13 @@ instance Print (Statement a) where
     DivStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "/="), prt 0 expression, doc (showString ";")])
     PowStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "^="), prt 0 expression, doc (showString ";")])
     CompStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "@="), prt 0 expression, doc (showString ";")])
-    QAssStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString ":="), prt 0 expression, doc (showString ";")])
-    QAddStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "+="), prt 0 expression, doc (showString ";")])
-    QSubStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "-="), prt 0 expression, doc (showString ";")])
-    QMulStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "*="), prt 0 expression, doc (showString ";")])
-    QDivStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "/="), prt 0 expression, doc (showString ";")])
-    QPowStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "^="), prt 0 expression, doc (showString ";")])
-    QCompStmt _ qualifier id expression -> prPrec i 1 (concatD [prt 0 qualifier, prt 0 id, doc (showString "@="), prt 0 expression, doc (showString ";")])
     EvalStmt _ expression -> prPrec i 0 (concatD [doc (showString "eval"), prt 9 expression, doc (showString ";")])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
 instance Print (MatchStatementClause a) where
   prt i e = case e of
     MatchStmtClause _ pattern statement -> prPrec i 0 (concatD [prt 0 pattern, doc (showString "=>"), prt 4 statement])
-  prtList _ [] = (concatD [])
+  prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
 instance Print (ConditionalStatement a) where
   prt i e = case e of

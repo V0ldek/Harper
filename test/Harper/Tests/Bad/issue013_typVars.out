@@ -1,4 +1,4 @@
-Error: expression `h` has invalid type 'e& -> f&'; expected 'c&'.
+Error: expression `h` has invalid type `e& -> f&`; expected `c&`.
 During evaluation of:
  g h
 
