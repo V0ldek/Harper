@@ -41,11 +41,16 @@ declTypes ds = do
     -- Load empty signatures first so that member declarations see all types.
     sigs <- mapM declToSig ds
     loadTypes (toStore sigs)
-    ts <- mapM declToType ds
-    loadTypes (toStore ts)
+    -- Load ctors to type check fields and find duplicate field names.
     ctors <- mapM declToCtors ds
+    -- Now fully parse type declarations to gather member declarations.
+    ts    <- mapM declToType ds
+    loadTypes (toStore ts)
     let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
     modify (\st -> st { tCtors = ctorStore })
+    -- Member type signatures now have references to "empty" types without any members.
+    -- Not the cleanest solution, but it works.
+    forM_ ts fixMemberSignatures
   where
     assertUniqueNames = case findDupsBy toIdent ds of
         ([], []) -> return ()
@@ -64,7 +69,23 @@ declTypes ds = do
         error
             $  "This type of type declarations is not supported yet: "
             ++ show d
-    toStore ts = Map.fromList [ (uti i, t) | t@(VType i _ _ _ _) <- ts ]
+    toStore ts = Map.fromList [ (i, t) | t@(VType i _ _ _ _) <- ts ]
+    fixMemberSignatures (VType _ _ _ _ membs) =
+        forM_ (Map.elems membs) fixMemberSignatureAt
+    fixMemberSignatureAt ptr = do
+        o <- gets ((Map.! ptr) . objData)
+        t <- fixSignature (objType o)
+        modifyObjData (Map.insert ptr o { objType = t })
+    fixSignature (VType tName args params ctors membs) = do
+        t <- getType tName
+        params' <- mapM fixSignature params
+        let VType _ _ _ ctors' membs' = t
+        return $ VType tName args params' ctors' membs'
+    fixSignature (FType p r) = do
+        p' <- fixSignature p
+        r' <- fixSignature r
+        return $ FType p' r'
+    fixSignature t = return t
 
 declToSig :: TypeDecl Pos -> TypeChecker Type
 declToSig d@(ValTDecl a sig@(TSig _ i _) body) =
@@ -79,19 +100,23 @@ declToSig d@(ValTUDecl _ sig@(TSig _ i params) _) = do
 declToType :: TypeDecl Pos -> TypeChecker Type
 declToType (ValTDecl a sig@(TSig _ i _) body) =
     declToType (ValTUDecl a sig [TVarDecl a i body])
-declToType d@(ValTUDecl _ (TSig _ tName _) vs) = do
+declToType d@(ValTUDecl _ (TSig _ tName tParams) vs) = do
     t         <- declToSig d
     membTypes <- foldM collectMembs Map.empty vs
-    membs     <- mapM (unionMemb (params t)) (Map.toList membTypes)
+    membs     <- mapM (unionMemb (params t))
+                      (Map.toList (Map.map (map addThisArg) membTypes))
+    ls <- allocs (map (\m -> Obj (snd m) False) membs)
     return $ t { ctors = Set.fromList (getCtorIdents d)
-               , membs = Map.fromList membs
+               , membs = Map.fromList (zip (map fst membs) ls)
                }
   where
     collectMembs acc (TVarDecl _ ctor body) =
-        let membs = case body of
-                DataTBody _ _ membs -> membs
-                TBody _ membs       -> membs
-        in  collectMembs' ctor acc [ th | TMemTHint _ th <- membs ]
+        let ths = case body of
+                DataTBody _ flds membs ->
+                    [ th | TMemTHint _ th <- membs ]
+                        ++ [ th | TFldDecl _ th <- flds ]
+                TBody _ membs -> [ th | TMemTHint _ th <- membs ]
+        in  collectMembs' ctor acc ths
     collectMembs' ctor acc membs =
         case findDupsBy (\(THint _ i _) -> i) membs of
             ([], []) ->
@@ -104,6 +129,10 @@ declToType d@(ValTUDecl _ (TSig _ tName _) vs) = do
         case unifys boundTs of
             Just subst -> return (i, apply subst (head ts))
             Nothing    -> raise $ Error.conflMembTypes tName i ts ths
+    addThisArg (THint a i tExpr) =
+        let thisType = TApp a tName (map (\(TParam _ i) -> TVar a i) tParams)
+            tExpr'   = TFun a thisType tExpr
+        in  THint a i tExpr'
 
 declToType d =
     error $ "This type of type declarations is not supported yet: " ++ show d
@@ -203,7 +232,7 @@ parseType (  TFun _ e1 e2) = do
     r <- parseType e2
     return $ FType p r
 parseType e@(TApp _ u es) = do
-    lookup <- getsTypes (Map.lookup $ uti u)
+    lookup <- lookupType u
     let n = length es
     case lookup of
         Just t@(VType _ params _ c membs) -> if length params /= n
@@ -211,7 +240,7 @@ parseType e@(TApp _ u es) = do
             else do
                 tArgs <- mapM parseType es
                 let subst = Map.fromList (zip params tArgs)
-                return $ VType u params tArgs c (Map.map (apply subst) membs)
+                return $ VType u params tArgs c membs
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e
         Nothing         -> raise $ Error.undeclaredType u e

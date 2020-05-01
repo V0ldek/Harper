@@ -1,4 +1,6 @@
-Error: Cannot use the `this` identifier outside of a member function.
+Error: cannot use the `this` identifier outside of a member function.
 During evaluation of:
  this
-Located at line 3 column 15
+Located at line 3 column 16
+
+Execution terminated with an error: type error.

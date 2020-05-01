@@ -13,6 +13,7 @@ import           Data.Maybe
 
 import           Harper.Abs
 import           Harper.Error
+import           Harper.Output
 import           Harper.TypeSystem.Core
 import           Harper.Utility
 
@@ -33,17 +34,26 @@ bindAllVarsInOEnv oenv = forM_ (Map.elems oenv) bindOne
     bindOne ptr = modifyObjData
         (Map.adjust (\o -> o { objType = bindAllVars (objType o) }) ptr)
 
-asksFreshInst :: UIdent -> TypeChecker (Maybe (TypeCtor, Type))
-asksFreshInst i = do
+getFreshInst :: UIdent -> TypeChecker (Maybe (TypeCtor, Type))
+getFreshInst i = do
     luCtor <- getsCtors (Map.lookup i)
     case luCtor of
         Just ctor -> do
-            t <- getsTypes (Map.! uti (tname ctor))
+            t <- getType (tname ctor)
             let n = length (params t)
             fresh <- newvars n
             let subst = Map.fromList $ zip (params t) (map TypeVar fresh)
             return $ Just (apply subst ctor, apply subst t)
         Nothing -> return Nothing
+
+getMember :: Type -> Ident -> TypeChecker (Maybe ObjData)
+getMember (VType t args params _ membs) i = case Map.lookup i membs of
+    Just ptr -> do
+        o <- gets ((Map.! ptr) . objData)
+        let subst = Map.fromList $ zip args params
+        return $ Just o { objType = apply subst (objType o) }
+    Nothing -> return Nothing
+getMember _ _ = return Nothing
 
 type Subst = Map.Map Ident Type
 
@@ -52,11 +62,10 @@ class Types t where
     tVars :: t -> [Ident]
 
 instance Types Type where
-    apply s v@(TypeVar i) = fromMaybe v (Map.lookup i s)
-    apply s v@(VType _ _ args _ membs) =
-        v { args = apply s args, membs = Map.map (apply s) membs }
-    apply s (FType p r) = FType (apply s p) (apply s r)
-    apply s t           = t
+    apply s v@(TypeVar i         ) = fromMaybe v (Map.lookup i s)
+    apply s v@(VType _ _ args _ _) = v { args = apply s args }
+    apply s (  FType p r         ) = FType (apply s p) (apply s r)
+    apply s t                      = t
 
     tVars (TypeVar i         ) = [i]
     tVars (VType _ _ args _ _) = tVars args

@@ -17,7 +17,7 @@ type OEnv = Map.Map Ident Ptr
 
 type ObjStore = Map.Map Ptr ObjData
 type CtorStore = Map.Map UIdent TypeCtor
-type TypeStore = Map.Map Ident Type
+type TypeStore = Map.Map UIdent Type
 
 data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
 data BlockState = BlkSt { reachable :: Bool, rets :: [Type], hasSideeffects :: Bool  } deriving Show
@@ -25,7 +25,7 @@ data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord)
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 
-data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: Set.Set UIdent, membs :: TypeStore }
+data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: Set.Set UIdent, membs :: OEnv }
           | FType { param :: Type, ret :: Type }
           | TypeVar Ident
           | TypeBound Ident
@@ -86,8 +86,18 @@ lookupObj i = do
             return $ Just obj
         Nothing -> return Nothing
 
+lookupType :: UIdent -> TypeChecker (Maybe Type)
+lookupType i = getsTypes (Map.lookup i)
+
+getType :: UIdent -> TypeChecker Type
+getType i = getsTypes (Map.! i)
+
 loadTypes :: TypeStore -> TypeChecker ()
 loadTypes t = modify (\st -> st { types = Map.union t (types st) })
+
+-- Unspeakable name
+thisIdent :: Ident
+thisIdent = Ident "~this"
 
 -- Unspeakable name.
 varKey :: String

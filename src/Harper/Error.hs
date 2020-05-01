@@ -31,14 +31,14 @@ invType
     -> Expression p1
     -> p2
     -> HarperOutput a
-invType t1 t2 e ctx = do
+invType act exp e ctx = do
     outputErr
         ( ("expression `" ++)
         . showsPrt e
         . ("` has invalid type `" ++)
-        . shows t1
+        . shows act
         . ("`; expected `" ++)
-        . shows t2
+        . shows exp
         . ("`." ++)
         )
         ctx
@@ -53,18 +53,18 @@ invTypes
     -> p
     -> p
     -> HarperOutput a
-invTypes t1 t2 t e1 e2 ctx = do
+invTypes act1 act2 exp e1 e2 ctx = do
     outputErr
         ( ("expressions `" ++)
         . showsPrt e1
         . ("` and `" ++)
         . showsPrt e2
         . ("` have invalid types `" ++)
-        . shows t1
+        . shows act1
         . ("`, `" ++)
-        . shows t2
+        . shows act2
         . ("`; expected `" ++)
-        . shows t
+        . shows exp
         . ("`." ++)
         )
         ctx
@@ -186,6 +186,18 @@ invFldAcc t i ctx = do
         ctx
     typeErr
 
+invMembAccess :: (Print p, Position p) => Type -> Ident -> p -> HarperOutput a
+invMembAccess t i ctx = do
+    outputErr
+        ( ("type `" ++)
+        . shows t
+        . ("` has no member `" ++)
+        . showsPrt i
+        . ("`." ++)
+        )
+        ctx
+    typeErr
+
 unassFlds :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 unassFlds t is ctx = do
     outputErr
@@ -230,7 +242,9 @@ conflMembNames
     :: (Print p, Position p) => [Ident] -> UIdent -> [p] -> HarperOutput a
 conflMembNames is ctor ctxs = do
     outputConflDecls
-        ( ("conflicting member declarations of `"++) . showsPrtMany is . ("` in the declaration of type variant `" ++)
+        ( ("conflicting member declarations of `" ++)
+        . showsPrtMany is
+        . ("` in the declaration of type variant `" ++)
         . showsPrt ctor
         . ("`." ++)
         )
@@ -364,8 +378,10 @@ tooManyParams i t n1 n2 ctx = do
 conflMatchClauseTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflMatchClauseTypes ts ctx = do
     outputErr
-        (("cannot unify conflicting types of match clauses: `" ++) . showsMany ts
-        . ("`."++))
+        ( ("cannot unify conflicting types of match clauses: `" ++)
+        . showsMany ts
+        . ("`." ++)
+        )
         ctx
     typeErr
 
@@ -374,7 +390,7 @@ conflRetTypes ts ctx = do
     outputErr
         ( ("cannot unify conflicting return types of a function: `" ++)
         . showsMany ts
-        . ("`."++)
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -400,17 +416,24 @@ conflFldSubsts t ctor ts ctx = do
         ctx
     typeErr
 
-conflMembTypes :: (Print p, Position p) => UIdent -> Ident -> [Type] -> [p] -> HarperOutput a
+conflMembTypes
+    :: (Print p, Position p)
+    => UIdent
+    -> Ident
+    -> [Type]
+    -> [p]
+    -> HarperOutput a
 conflMembTypes tName i ts ctxs = do
-    outputConflDecls (
-        ("cannot unify conflicting types: `"++)
+    outputConflDecls
+        ( ("cannot unify conflicting types: `" ++)
         . showsMany ts
-        . ("` resulting from declarations of the member `"++)
+        . ("` resulting from declarations of the member `" ++)
         . showsPrt i
-        . ("` of the type `"++)
+        . ("` of the type `" ++)
         . showsPrt tName
-        . ("`."++)
-     ) ctxs
+        . ("`." ++)
+        )
+        ctxs
     typeErr
 
 patInvType :: (Print p, Position p) => Type -> Type -> p -> HarperOutput a
@@ -458,6 +481,13 @@ sideeffectNotUnitLit e ctx = do
         . ("` of type `Unit` cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?" ++
           )
         )
+        ctx
+    typeErr
+
+thisOutsideOfMember :: (Print p, Position p) => p -> HarperOutput a
+thisOutsideOfMember ctx = do
+    outputErr
+        ("cannot use the `this` identifier outside of a member function." ++)
         ctx
     typeErr
 

@@ -108,7 +108,7 @@ thunkPrep (OrExpr  a e1 e2) eval = thunkPrepBin e1 e2 (OrExpr a) eval
 
 thunkPrep (NotExpr a e    ) eval = thunkPrepUn e (NotExpr a) eval
 
-snapshotExpr e = error
+thunkPrep e                 _    = error
     ("Evaluating this type of expressions is not implemented yet: " ++ show e)
 
 thunkPrepUn
