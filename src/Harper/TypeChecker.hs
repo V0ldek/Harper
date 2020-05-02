@@ -24,29 +24,25 @@ import           Harper.TypeSystem.Typing
 import           Harper.Abs.Typed
 import           Harper.Utility
 
-runTypeChecker
-    :: Program Pos
-    -> HarperOutput (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
+runTypeChecker :: Program Pos -> HarperOutput (Program (TypeMetaData Pos))
 runTypeChecker tree = evalStateT
     (runReaderT (typeCheck tree) (Env Map.empty))
     (St (BlkSt True [] False) 0 Map.empty Map.empty Map.empty)
 
-typeCheck
-    :: Program Pos
-    -> TypeChecker (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
+typeCheck :: Program Pos -> TypeChecker (Program (TypeMetaData Pos))
 typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
     loadTypes globalTypes
     declTypes tds
-    globalEnv    <- declareGlobals
+    globalEnv       <- declareGlobals
     (fts', userEnv) <- declares fts
     let env = Env $ Map.union userEnv globalEnv
-    fs' <- mapM (local (const env) . annotate) fs
+    fs'   <- mapM (local (const env) . annotate) fs
     tds'  <- mapM (local (const env) . annotateTypeMembers) tds
-    ctors        <- gets tCtors
-    return (toProg tds' fts' fs', ctors)
+    ctors <- gets tCtors
+    return (toProg tds' fts' fs')
   where
     toProg tds fts fs =
         let tds' = [ TopLvlTDecl (annWith unitT $ pos td) td | td <- tds ]
@@ -75,12 +71,12 @@ typeCheck p@(Prog a ds) = do
     annotateMemb _ th@TMemTHint{} = return $ annWith unitT <$> th
     annotateMemb tName (TMemFDecl a decl@(FDecl a' i params body)) = do
         t <- getType tName
-        let t' = bindAllVars t
+        let t'      = bindAllVars t
             params' = FParam Nothing thisIdent : params
-            membIs = Map.keys (membs t')
+            membIs  = Map.keys (membs t')
         membsData <- mapM (getMember t') membIs
         let membTypes = map ((\(Obj t _) -> t) . fromJust) membsData
-            membs = zip membIs membTypes
+            membs     = zip membIs membTypes
         oenv  <- declareFromList membs
         decl' <- localObjs (Map.union oenv) (annotate (FDecl a' i params' body))
         return $ TMemFDecl (annWith unitT a) decl'
@@ -131,7 +127,10 @@ annotate d@(FDecl a i params body) = do
             ++ " and non empty param list "
             ++ show ps
             ++ ". Arity check fail."
-    curryType ps r = foldr FType r ps
+    curryType ps r = foldr combine r ps
+      where
+        combine SEType r@(FType SEType _) = r
+        combine p      r                  = FType p r
 
 annotateExpr :: Expression Pos -> TypeChecker (Expression (TypeMetaData Pos))
 
@@ -312,7 +311,9 @@ annotateExpr e@(TMembExpr a tName (MembAcc a' i : as)) = do
             case luMemb of
                 Just (Obj t' _) -> do
                     (t'', as') <- annotateAccess t' e as
-                    return $ TMembExpr (annWith t'' a) tName as'
+                    return $ TMembExpr (annWith t'' a)
+                                       tName
+                                       (MembAcc (annWith t'' a') i : as')
                 Nothing -> raise $ Error.invMembAccess t i e
         Just t  -> raise $ Error.invMembAccess t i e
         Nothing -> raise $ Error.undeclaredType tName e
@@ -339,7 +340,8 @@ annotateAccess t ctx = foldM access (t, [])
     access (t@(VType tName _ _ _ membs), acc') (MembAcc a i) = do
         luMemb <- getMember t i
         case luMemb of
-            Just (Obj (FType p r) _) | canUnify p t -> return (r, MembAcc (annWith r a) i : acc')
+            Just (Obj (FType p r) _) | canUnify p t ->
+                return (r, MembAcc (annWith r a) i : acc')
             Just (Obj t' _) ->
                 error
                     $  "The type"
@@ -366,7 +368,7 @@ annotateUnExpr
 annotateUnExpr t e a e' = do
     e'' <- annotateExpr e'
     let t' = typ e''
-    if canUnify t' t
+    if canUnify t t'
         then return (annWith t a, e'')
         else raise $ Error.invType t' t e' e
 
@@ -386,7 +388,7 @@ annotateBinExpr t e a e1 e2 = do
     e2' <- annotateExpr e2
     let t1 = typ e1'
         t2 = typ e2'
-    if canUnify t1 t && canUnify t2 t
+    if canUnify t t1 && canUnify t t2
         then return (annWith t a, e1', e2')
         else raise $ Error.invTypes t1 t2 t e1 e2 e
 
@@ -731,16 +733,18 @@ funParams
     :: [FunParam (TypeMetaData Pos)]
     -> BlockState
     -> [FunParam (TypeMetaData Pos)]
-funParams ps st | hasSideeffects st =
-    ps ++ [FParam (SEType, Nothing) (Ident "()")]
+funParams ps st | hasSideeffects st = case mLast ps of
+    Just (FParam (SEType, _) _) -> ps
+    _                           -> ps ++ [FParam (SEType, Nothing) (Ident "()")]
 funParams ps _ = ps
 
 lamParams
     :: [LambdaParam (TypeMetaData Pos)]
     -> BlockState
     -> [LambdaParam (TypeMetaData Pos)]
-lamParams ps st | hasSideeffects st =
-    ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
+lamParams ps st | hasSideeffects st = case mLast ps of
+    Just (LamParam (SEType, _) _) -> ps
+    _ -> ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
 lamParams ps _ = ps
 
 

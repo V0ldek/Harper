@@ -89,23 +89,28 @@ instance Types a => Types [a] where
 catSubst :: Subst -> Subst -> Subst
 catSubst s1 s2 = Map.union (Map.map (apply s2) s1) s2
 
+-- Unify is left-biased.
 unify :: Type -> Type -> Maybe Subst
-unify (TypeVar i)   t2            = return $ Map.fromList [(i, t2)]
-unify t1            (TypeVar i  ) = return $ Map.fromList [(i, t1)]
-unify (FType p1 r1) (FType p2 r2) = do
-    s1 <- unify p1 p2
-    s2 <- unify (apply s1 r1) (apply s1 r2)
-    return $ catSubst s1 s2
-unify (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 = foldM
-    accSubst
-    Map.empty
-    (zip ps1 ps2)
+unify t1 t2 = case unify' t1 t2 of
+    Nothing -> unify' t1 (FType SEType t2)
+    s       -> s
   where
-    accSubst s (p1, p2) = do
-        s' <- unify (apply s p1) (apply s p2)
-        return $ catSubst s s'
-unify t1 t2 | t1 == t2 = return Map.empty
-unify t1 t2            = Nothing
+    unify' (TypeVar i)   t2            = return $ Map.fromList [(i, t2)]
+    unify' t1            (TypeVar i  ) = return $ Map.fromList [(i, t1)]
+    unify' (FType p1 r1) (FType p2 r2) = do
+        s1 <- unify p1 p2
+        s2 <- unify (apply s1 r1) (apply s1 r2)
+        return $ catSubst s1 s2
+    unify' (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 = foldM
+        accSubst
+        Map.empty
+        (zip ps1 ps2)
+      where
+        accSubst s (p1, p2) = do
+            s' <- unify (apply s p1) (apply s p2)
+            return $ catSubst s s'
+    unify' t1 t2 | t1 == t2 = return Map.empty
+    unify' t1 t2            = Nothing
 
 unifys :: [Type] -> Maybe Subst
 unifys = accSubst Map.empty

@@ -1,6 +1,6 @@
-Error: the variant `Empty` of `List a` does not implement the function `head`.
+Error: the variant `Empty` of `List` does not implement the function `head`.
 During evaluation of:
-  List.head empty
-Located at line 3 column 8
+  List . head
+Located at line 19 column 8
 
 Execution terminated with an error: runtime error.

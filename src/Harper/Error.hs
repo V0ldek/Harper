@@ -178,6 +178,21 @@ nonExhPatMatch ctx = do
     outputErr ("non exhaustive pattern match." ++) ctx
     runtimeErr
 
+notDeclOnVar
+    :: (Print p, Position p) => UIdent -> UIdent -> Ident -> p -> HarperOutput a
+notDeclOnVar t ctor memb ctx = do
+    outputErr
+        ( ("the variant `" ++)
+        . showsPrt ctor
+        . ("` of `" ++)
+        . showsPrt t
+        . ("` does not implement the function `" ++)
+        . showsPrt memb
+        . ("`." ++)
+        )
+        ctx
+    runtimeErr
+
 invFldAcc :: (Print p, Position p) => TypeCtor -> Ident -> p -> HarperOutput a
 invFldAcc t i ctx = do
     outputErr

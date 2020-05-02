@@ -35,8 +35,8 @@ testOutput (TProg prog out) = TestCase
                     let Out out res = runTypeChecker t
                     in
                         case res of
-                            Ok (t', tenv) ->
-                                let Out out' res' = runInterpreter t' tenv
+                            Ok t' ->
+                                let Out out' res' = runInterpreter t'
                                 in
                                     case res' of
                                         Ok v ->
