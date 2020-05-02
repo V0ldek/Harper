@@ -1,10 +1,12 @@
 module Harper.Interpreter.Declarations
-    ( funDecls
+    ( typeDecls
+    , funDecls
     , declLocal
     , declLocal'
     , declLocalUnass
     )
 where
+import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 import           Control.Monad.Reader
@@ -14,10 +16,70 @@ import           Harper.Abs
 import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Thunk
+import           Harper.TypeSystem.Core         ( thisIdent )
 
-funDecls :: [FunDecl Meta] -> (Statement Meta -> Interpreter Object) -> Interpreter OEnv
+typeDecls :: Exec -> [TypeDecl Meta] -> Interpreter TEnv
+typeDecls exec ds = do
+    tenvs <- mapM (declCtors exec) ds
+    return $ foldl' Map.union Map.empty tenvs
+
+declCtors :: Exec -> TypeDecl Meta -> Interpreter TEnv
+declCtors exec (ValTDecl a sig@(TSig _ tName _) body) =
+    declCtors exec (ValTUDecl a sig [TVarDecl a tName body])
+declCtors exec (ValTUDecl _ (TSig _ tName _) vs) = do
+    cs <- mapM (declCtor exec tName) vs
+    let iscs = zip (map (\(ValueCtor _ i _) -> i) cs) cs
+    return $ Map.fromList iscs
+
+declCtor :: Exec -> UIdent -> TypeVariantDecl Meta -> Interpreter ValueCtor
+declCtor exec tName (TVarDecl _ i body) = do
+    let membs = case body of
+            (TBody _ membs      ) -> membs
+            (DataTBody _ _ membs) -> membs
+    let decls = [ decl | TMemFDecl _ decl <- membs ]
+    autoMembs <- case body of
+        TBody{}              -> return []
+        (DataTBody _ flds _) -> generateAutoMembs flds
+    ls <- allocs (map snd autoMembs)
+    let autoEnv = Map.fromList (zip (map fst autoMembs) ls)
+    declEnv <- funDecls decls exec
+    return $ ValueCtor tName i (Map.union declEnv autoEnv)
+  where
+    generateAutoMembs flds = do
+        env <- asksObjs id
+        return $ map
+            (\(TFldDecl _ (THint _ i _)) -> (i, Fun [thisIdent] (getFld i) env))
+            flds
+    getFld i = do
+        o   <- getObj thisIdent
+        mo' <- evalObj o
+        case mo' of
+            Just (Value _ _data) -> case Map.lookup i _data of
+                Just l' -> do
+                    o'   <- getsObjs (Map.! l')
+                    mo'' <- evalObj o'
+                    case mo'' of
+                        Just o'' -> return o''
+                        Nothing ->
+                            error
+                                $ "An object field is an unassigned variable. This should be impossible. "
+                                ++ show i
+                                ++ " "
+                                ++ show mo''
+                Nothing ->
+                    error
+                        $  "Invalid access to field "
+                        ++ show i
+                        ++ ". Type check should've caught this."
+            _ ->
+                error
+                    $ "Invalid argument passed as `this` to a field getter. This should be impossible. "
+                    ++ show i
+                    ++ " "
+                    ++ show mo'
+
+funDecls :: [FunDecl Meta] -> Exec -> Interpreter OEnv
 funDecls ds interp = do
-    st  <- get
     env <- asks objs
     let n = length ds
     ls <- newlocs n

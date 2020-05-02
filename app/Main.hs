@@ -54,10 +54,10 @@ run v p s =
                 let Out out res = runTypeChecker tree
                 putStrLn $ out ""
                 case res of
-                    Ok (tree', tenv) -> do
+                    Ok tree' -> do
                         putStrLn "\nType check successful."
                         showTree v tree'
-                        let Out out res = runInterpreter tree' tenv
+                        let Out out res = runInterpreter tree'
                         putStrLn $ out ""
                         case res of
                             Ok v ->

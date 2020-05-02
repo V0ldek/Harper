@@ -51,13 +51,13 @@ The reserved words used in Harper are the following:
 The symbols used in Harper are the following:
   | ; | :: | () | (
   | ) | { | } | ->
-  | , | = | . | @
-  | ^ | * | / | +
-  | - | == | != | <
-  | > | <= | >= | |
-  | \ | => | := | +=
-  | -= | *= | /= | ^=
-  | @= | _ | : | 
+  | , | = | . | this.data
+  | @ | ^ | * | /
+  | + | - | == | !=
+  | < | > | <= | >=
+  | | | \ | => | :=
+  | += | -= | *= | /=
+  | ^= | @= | _ | :
 
 ===Comments===
 Single-line comments begin with //.Multiple-line comments are  enclosed with /* and */.
@@ -112,20 +112,20 @@ All other symbols are terminals.
   |  |  **|**  | //Char// 
   |  |  **|**  | //String// 
   |  |  **|**  | //BoolLiteral// 
-  | //Qualifier1// | -> | //Ident// ``.`` 
-  | //Qualifier// | -> | //Qualifier1// 
-  |  |  **|**  | //Qualifier// //Qualifier1// 
-  |  |  **|**  | ``this`` ``.`` 
-  |  |  **|**  | ``this`` ``.`` ``data`` ``.`` 
-  | //Expression12// | -> | ``this`` 
-  |  |  **|**  | ``(`` //Expression// ``)`` 
-  | //Expression11// | -> | ``val`` ``{`` //[AdHocFieldDecl]// ``}`` 
-  |  |  **|**  | ``val`` //UIdent// ``{`` //[FieldAss]// ``}`` 
+  | //MemberAccess// | -> | ``.`` //Ident// 
+  | //[MemberAccess]// | -> | //MemberAccess// 
+  |  |  **|**  | //MemberAccess// ``.`` //[MemberAccess]// 
+  | //Expression13// | -> | ``this`` 
   |  |  **|**  | ``(`` //TupleExpression// ``)`` 
   |  |  **|**  | //Literal// 
   |  |  **|**  | //Ident// 
-  |  |  **|**  | //UIdent// 
-  |  |  **|**  | //Qualifier// //Ident// 
+  |  |  **|**  | ``(`` //Expression// ``)`` 
+  | //Expression12// | -> | //UIdent// //[MemberAccess]// 
+  |  |  **|**  | //Expression13// //[MemberAccess]// 
+  |  |  **|**  | ``this.data`` //[MemberAccess]// 
+  |  |  **|**  | //Expression13// 
+  | //Expression11// | -> | ``val`` ``{`` //[AdHocFieldDecl]// ``}`` 
+  |  |  **|**  | ``val`` //UIdent// ``{`` //[FieldAss]// ``}`` 
   |  |  **|**  | //Expression12// 
   | //Expression10// | -> | ``match`` //Expression11// ``{`` //[MatchExpressionClause]// ``}`` 
   |  |  **|**  | //Expression11// 
@@ -162,8 +162,7 @@ All other symbols are terminals.
   | //TupleExpression// | -> | //Expression11// ``,`` //TupleExpression// 
   |  |  **|**  | //Expression11// ``,`` //Expression11// 
   | //MatchExpressionClause// | -> | //Pattern// ``=>`` //Expression// 
-  | //[MatchExpressionClause]// | -> | **eps**
-  |  |  **|**  | //MatchExpressionClause// 
+  | //[MatchExpressionClause]// | -> | //MatchExpressionClause// 
   |  |  **|**  | //MatchExpressionClause// ``,`` //[MatchExpressionClause]// 
   | //FieldAss// | -> | //Ident// ``=`` //Expression// 
   | //[FieldAss]// | -> | **eps**
@@ -193,20 +192,13 @@ All other symbols are terminals.
   |  |  **|**  | //Ident// ``/=`` //Expression// ``;`` 
   |  |  **|**  | //Ident// ``^=`` //Expression// ``;`` 
   |  |  **|**  | //Ident// ``@=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``:=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``+=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``-=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``*=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``/=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``^=`` //Expression// ``;`` 
-  |  |  **|**  | //Qualifier// //Ident// ``@=`` //Expression// ``;`` 
   |  |  **|**  | //Statement2// 
   | //Statement// | -> | ``eval`` //Expression9// ``;`` 
   |  |  **|**  | //Statement1// 
   | //[Statement]// | -> | //Statement// 
   |  |  **|**  | //Statement// //[Statement]// 
   | //MatchStatementClause// | -> | //Pattern// ``=>`` //Statement4// 
-  | //[MatchStatementClause]// | -> | **eps**
+  | //[MatchStatementClause]// | -> | //MatchStatementClause// 
   |  |  **|**  | //MatchStatementClause// //[MatchStatementClause]// 
   | //ConditionalStatement// | -> | //IfStatement// //[ElseIfStatement]// 
   |  |  **|**  | //IfStatement// //[ElseIfStatement]// //ElseStatement// 

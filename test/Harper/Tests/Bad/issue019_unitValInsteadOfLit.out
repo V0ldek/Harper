@@ -1,4 +1,4 @@
-Error: the expression `unit` of type 'Unit' cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?
+Error: the expression `unit` of type `Unit` cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?
 During evaluation of:
 printLn "Bang!" unit
 Located at line 4 column 8

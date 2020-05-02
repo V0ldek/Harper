@@ -31,15 +31,15 @@ invType
     -> Expression p1
     -> p2
     -> HarperOutput a
-invType t1 t2 e ctx = do
+invType act exp e ctx = do
     outputErr
         ( ("expression `" ++)
         . showsPrt e
-        . ("` has invalid type '" ++)
-        . shows t1
-        . ("'; expected '" ++)
-        . shows t2
-        . ("'." ++)
+        . ("` has invalid type `" ++)
+        . shows act
+        . ("`; expected `" ++)
+        . shows exp
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -53,19 +53,19 @@ invTypes
     -> p
     -> p
     -> HarperOutput a
-invTypes t1 t2 t e1 e2 ctx = do
+invTypes act1 act2 exp e1 e2 ctx = do
     outputErr
         ( ("expressions `" ++)
         . showsPrt e1
         . ("` and `" ++)
         . showsPrt e2
-        . ("` have invalid types '" ++)
-        . shows t1
-        . ("', '" ++)
-        . shows t2
-        . ("'; expected '" ++)
-        . shows t
-        . ("'." ++)
+        . ("` have invalid types `" ++)
+        . shows act1
+        . ("`, `" ++)
+        . shows act2
+        . ("`; expected `" ++)
+        . shows exp
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -78,11 +78,11 @@ invEqTypes t1 t2 e1 e2 ctx = do
         . showsPrt e1
         . ("` and `" ++)
         . showsPrt e2
-        . ("` have invalid types '" ++)
+        . ("` have invalid types `" ++)
         . shows t1
-        . ("', '" ++)
+        . ("`, `" ++)
         . shows t2
-        . ("'; only values of the same, non function type can be equated." ++)
+        . ("`; only values of the same, non function type can be equated." ++)
         )
         ctx
     typeErr
@@ -95,11 +95,11 @@ invCmpTypes t1 t2 e1 e2 ctx = do
         . showsPrt e1
         . ("` and `" ++)
         . showsPrt e2
-        . ("` have invalid types '" ++)
+        . ("` have invalid types `" ++)
         . shows t1
-        . ("', '" ++)
+        . ("`, `" ++)
         . shows t2
-        . ("'; only values of the same primitive type can be compared." ++)
+        . ("`; only values of the same primitive type can be compared." ++)
         )
         ctx
     typeErr
@@ -114,9 +114,9 @@ invPredType t e ctx = do
     outputErr
         ( ("expression `" ++)
         . showsPrt e
-        . ("` of type '" ++)
+        . ("` of type `" ++)
         . shows t
-        . ("' cannot be used as a predicate in a conditional." ++)
+        . ("` cannot be used as a predicate in a conditional." ++)
         )
         ctx
     typeErr
@@ -124,9 +124,9 @@ invPredType t e ctx = do
 invApp :: (Position p) => Type -> Expression p -> HarperOutput a
 invApp t1 ctx = do
     outputErr
-        (("type '" ++)
+        (("type `" ++)
         . shows t1
-        . ("' is not a function type and a value of this type cannot have arguments applied to it. Possibly caused by appling too many arguments to a function." ++
+        . ("` is not a function type and a value of this type cannot have arguments applied to it. Possibly caused by appling too many arguments to a function." ++
           )
         )
         ctx
@@ -178,10 +178,37 @@ nonExhPatMatch ctx = do
     outputErr ("non exhaustive pattern match." ++) ctx
     runtimeErr
 
+notDeclOnVar
+    :: (Print p, Position p) => UIdent -> UIdent -> Ident -> p -> HarperOutput a
+notDeclOnVar t ctor memb ctx = do
+    outputErr
+        ( ("the variant `" ++)
+        . showsPrt ctor
+        . ("` of `" ++)
+        . showsPrt t
+        . ("` does not implement the function `" ++)
+        . showsPrt memb
+        . ("`." ++)
+        )
+        ctx
+    runtimeErr
+
 invFldAcc :: (Print p, Position p) => TypeCtor -> Ident -> p -> HarperOutput a
 invFldAcc t i ctx = do
     outputErr
-        (("type '" ++) . shows t . ("' has no field `" ++) . shows i . ("`." ++)
+        (("type `" ++) . shows t . ("` has no field `" ++) . shows i . ("`." ++)
+        )
+        ctx
+    typeErr
+
+invMembAccess :: (Print p, Position p) => Type -> Ident -> p -> HarperOutput a
+invMembAccess t i ctx = do
+    outputErr
+        ( ("type `" ++)
+        . shows t
+        . ("` has no member `" ++)
+        . showsPrt i
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -189,10 +216,10 @@ invFldAcc t i ctx = do
 unassFlds :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 unassFlds t is ctx = do
     outputErr
-        (("all fields must be assigned during value construction. Unassigned fields for '" ++
+        (("all fields must be assigned during value construction. Unassigned fields for `" ++
          )
         . shows t
-        . ("' are: `" ++)
+        . ("` are: `" ++)
         . showsPrtMany is
         . ("`." ++)
         )
@@ -203,9 +230,9 @@ excessFlds
     :: (Print p, Position p) => TypeCtor -> [Ident] -> p -> HarperOutput a
 excessFlds t is ctx = do
     outputErr
-        (("unrecognized field identifiers during value construction. Type '" ++)
+        (("unrecognized field identifiers during value construction. Type `" ++)
         . shows t
-        . ("' has no fields: `" ++)
+        . ("` has no fields: `" ++)
         . showsPrtMany is
         . ("`." ++)
         )
@@ -222,7 +249,20 @@ conflTypeNames is ctxs = do
 conflCtorNames :: (Print p, Position p) => [UIdent] -> [p] -> HarperOutput a
 conflCtorNames is ctxs = do
     outputConflDecls
-        (("conflicting ctor names `" ++) . showsPrtMany is . ("`." ++))
+        (("conflicting type variant names `" ++) . showsPrtMany is . ("`." ++))
+        ctxs
+    typeErr
+
+conflMembNames
+    :: (Print p, Position p) => [Ident] -> UIdent -> [p] -> HarperOutput a
+conflMembNames is ctor ctxs = do
+    outputConflDecls
+        ( ("conflicting member declarations of `" ++)
+        . showsPrtMany is
+        . ("` in the declaration of type variant `" ++)
+        . showsPrt ctor
+        . ("`." ++)
+        )
         ctxs
     typeErr
 
@@ -255,9 +295,9 @@ typeInvArity
     :: (Print p, Position p) => Type -> Int -> Int -> p -> HarperOutput a
 typeInvArity t tArity nArgs ctx = do
     outputErr
-        ( ("the type '" ++)
+        ( ("the type `" ++)
         . shows t
-        . ("' is applied to " ++)
+        . ("` is applied to " ++)
         . shows nArgs
         . (" type arguments, but it has arity " ++)
         . shows tArity
@@ -304,9 +344,9 @@ nonFunDeclWithParams i t ctx = do
     outputErr
         ( ("object `" ++)
         . showsPrt i
-        . ("` has a type '" ++)
+        . ("` has a type `" ++)
         . shows t
-        . ("', which is not a function, but its declaration has formal parameters." ++
+        . ("`, which is not a function, but its declaration has formal parameters." ++
           )
         )
         ctx
@@ -318,11 +358,11 @@ funInvType i exp act ctx = do
     outputErr
         ( ("cannot match function's `" ++)
         . showsPrt i
-        . ("` declared type '" ++)
+        . ("` declared type `" ++)
         . shows exp
-        . ("' with its actual type '" ++)
+        . ("` with its actual type `" ++)
         . shows act
-        . ("'." ++)
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -339,9 +379,9 @@ tooManyParams i t n1 n2 ctx = do
     outputErr
         ( ("function `" ++)
         . showsPrt i
-        . ("` has a type '" ++)
+        . ("` has a type `" ++)
         . shows t
-        . ("', which is of arity " ++)
+        . ("`, which is of arity " ++)
         . shows n1
         . (", but it declares " ++)
         . shows n2
@@ -353,7 +393,9 @@ tooManyParams i t n1 n2 ctx = do
 conflMatchClauseTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflMatchClauseTypes ts ctx = do
     outputErr
-        (("cannot unify conflicting types of match clauses: " ++) . showsMany ts
+        ( ("cannot unify conflicting types of match clauses: `" ++)
+        . showsMany ts
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -361,8 +403,9 @@ conflMatchClauseTypes ts ctx = do
 conflRetTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
 conflRetTypes ts ctx = do
     outputErr
-        ( ("cannot unify conflicting return types of a function: " ++)
+        ( ("cannot unify conflicting return types of a function: `" ++)
         . showsMany ts
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -376,26 +419,46 @@ conflFldSubsts
     -> HarperOutput a
 conflFldSubsts t ctor ts ctx = do
     outputErr
-        ( ("cannot unify conflicting types: " ++)
+        ( ("cannot unify conflicting types: `" ++)
         . showsMany ts
-        . (" resulting from field patterns applied to the type constructor `" ++
+        . ("` resulting from field patterns applied to the type constructor `" ++
           )
         . shows ctor
-        . ("` of type '" ++)
+        . ("` of type `" ++)
         . shows t
-        . ("'." ++)
+        . ("`." ++)
         )
         ctx
+    typeErr
+
+conflMembTypes
+    :: (Print p, Position p)
+    => UIdent
+    -> Ident
+    -> [Type]
+    -> [p]
+    -> HarperOutput a
+conflMembTypes tName i ts ctxs = do
+    outputConflDecls
+        ( ("cannot unify conflicting types: `" ++)
+        . showsMany ts
+        . ("` resulting from declarations of the member `" ++)
+        . showsPrt i
+        . ("` of the type `" ++)
+        . showsPrt tName
+        . ("`." ++)
+        )
+        ctxs
     typeErr
 
 patInvType :: (Print p, Position p) => Type -> Type -> p -> HarperOutput a
 patInvType tAct tExp ctx = do
     outputErr
-        ( ("the pattern of type '" ++)
+        ( ("the pattern of type `" ++)
         . shows tAct
-        . ("' cannot be used to match an expression of type '" ++)
+        . ("` cannot be used to match an expression of type `" ++)
         . shows tExp
-        . ("'." ++)
+        . ("`." ++)
         )
         ctx
     typeErr
@@ -415,9 +478,9 @@ undeclaredType i ctx = do
 invCtor :: (Print p, Position p) => Type -> UIdent -> p -> HarperOutput a
 invCtor t i ctx = do
     outputErr
-        ( ("the type '" ++)
+        ( ("the type `" ++)
         . shows t
-        . ("' does not have a constructor `" ++)
+        . ("` does not have a constructor `" ++)
         . showsPrt i
         . ("`." ++)
         )
@@ -430,9 +493,16 @@ sideeffectNotUnitLit e ctx = do
     outputErr
         (("the expression `" ++)
         . showsPrt e
-        . ("` of type 'Unit' cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?" ++
+        . ("` of type `Unit` cannot be used to execute a `sideeffect` function. Did you mean to use a unit literal `()`?" ++
           )
         )
+        ctx
+    typeErr
+
+thisOutsideOfMember :: (Print p, Position p) => p -> HarperOutput a
+thisOutsideOfMember ctx = do
+    outputErr
+        ("cannot use the `this` identifier outside of a member function." ++)
         ctx
     typeErr
 

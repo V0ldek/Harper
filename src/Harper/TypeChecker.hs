@@ -13,6 +13,7 @@ import           Harper.Abs.Pos
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.Printer                 ( Print(..) )
+import           Harper.TypeSystem.Alloc
 import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.Declarations
 import           Harper.TypeSystem.GlobalDeclarations
@@ -23,38 +24,62 @@ import           Harper.TypeSystem.Typing
 import           Harper.Abs.Typed
 import           Harper.Utility
 
-runTypeChecker
-    :: Program Pos
-    -> HarperOutput (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
+runTypeChecker :: Program Pos -> HarperOutput (Program (TypeMetaData Pos))
 runTypeChecker tree = evalStateT
     (runReaderT (typeCheck tree) (Env Map.empty))
     (St (BlkSt True [] False) 0 Map.empty Map.empty Map.empty)
 
-typeCheck
-    :: Program Pos
-    -> TypeChecker (Program (TypeMetaData Pos), Map.Map UIdent TypeCtor)
+typeCheck :: Program Pos -> TypeChecker (Program (TypeMetaData Pos))
 typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
     loadTypes globalTypes
     declTypes tds
-    globalEnv    <- declareGlobals
-    (fts', oenv) <- declares fts
-    fs' <- mapM (localObjs (const $ Map.union oenv globalEnv) . annotate) fs
-    ctors        <- gets tCtors
-    return (toProg ds fts' fs', ctors)
+    globalEnv       <- declareGlobals
+    (fts', userEnv) <- declares fts
+    let env = Env $ Map.union userEnv globalEnv
+    fs'   <- mapM (local (const env) . annotate) fs
+    tds'  <- mapM (local (const env) . annotateTypeMembers) tds
+    ctors <- gets tCtors
+    return (toProg tds' fts' fs')
   where
-    toProg
-        :: [TopLvlDecl Pos]
-        -> [TypeHint (TypeMetaData Pos)]
-        -> [FunDecl (TypeMetaData Pos)]
-        -> Program (TypeMetaData Pos)
-    toProg ds fts fs =
-        let tds  = [ annWith unitT <$> td | td@TopLvlTDecl{} <- ds ]
+    toProg tds fts fs =
+        let tds' = [ TopLvlTDecl (annWith unitT $ pos td) td | td <- tds ]
             fts' = [ TopLvlTHint (annWith (typ th) a) th | th <- fts ]
             fs'  = [ TopLvlFDecl (annWith unitT $ pos f) f | f <- fs ]
-        in  Prog (annWith unitT a) (tds ++ fts' ++ fs')
+        in  Prog (annWith unitT a) (tds' ++ fts' ++ fs')
+    annotateTypeMembers (ValTDecl a' sig@(TSig _ tName _) body) = do
+        body' <- annotateTypeBody tName body
+        return $ ValTDecl (annWith unitT a') (annWith unitT <$> sig) body'
+    annotateTypeMembers (ValTUDecl a' sig@(TSig _ tName _) variants) = do
+        variants' <- mapM
+            (\(TVarDecl a i body) -> do
+                body' <- annotateTypeBody tName body
+                return $ TVarDecl (annWith unitT a) i body'
+            )
+            variants
+        return $ ValTUDecl (annWith unitT a') (annWith unitT <$> sig) variants'
+    annotateTypeBody tName (TBody a membs) = do
+        membs' <- mapM (annotateMemb tName) membs
+        return $ TBody (annWith unitT a) membs'
+    annotateTypeBody tName (DataTBody a flds membs) = do
+        membs' <- mapM (annotateMemb tName) membs
+        return $ DataTBody (annWith unitT a)
+                           (map (annWith unitT <$>) flds)
+                           membs'
+    annotateMemb _ th@TMemTHint{} = return $ annWith unitT <$> th
+    annotateMemb tName (TMemFDecl a decl@(FDecl a' i params body)) = do
+        t <- getType tName
+        let t'      = bindAllVars t
+            params' = FParam Nothing thisIdent : params
+            membIs  = Map.keys (membs t')
+        membsData <- mapM (getMember t') membIs
+        let membTypes = map ((\(Obj t _) -> t) . fromJust) membsData
+            membs     = zip membIs membTypes
+        oenv  <- declareFromList membs
+        decl' <- localObjs (Map.union oenv) (annotate (FDecl a' i params' body))
+        return $ TMemFDecl (annWith unitT a) decl'
 
 annotate :: FunDecl Pos -> TypeChecker (FunDecl (TypeMetaData Pos))
 annotate d@(FDecl a i params body) = do
@@ -102,7 +127,10 @@ annotate d@(FDecl a i params body) = do
             ++ " and non empty param list "
             ++ show ps
             ++ ". Arity check fail."
-    curryType ps r = foldr FType r ps
+    curryType ps r = foldr combine r ps
+      where
+        combine SEType r@(FType SEType _) = r
+        combine p      r                  = FType p r
 
 annotateExpr :: Expression Pos -> TypeChecker (Expression (TypeMetaData Pos))
 
@@ -114,7 +142,7 @@ annotateExpr (LitExpr a l) =
 -- Value construction.
 
 annotateExpr e@(VCtorExpr a ctor fldAss) = do
-    tInst <- asksFreshInst ctor
+    tInst <- getFreshInst ctor
     case tInst of
         Just (t@(TypeCtor tName _ flds), t') -> do
             let assMap = Map.fromList [ (i, d) | d@(DataAss _ i _) <- fldAss ]
@@ -173,8 +201,8 @@ annotateExpr e@(LamExpr a params body) = do
     (params', oenv  ) <- annotateParams
     (body'  , bodySt) <- localObjs (Map.union oenv) (annotateBody body)
     let params'' = lamParams params' bodySt
-        t        = curryType (map typ params') (typ body')
-    return $ LamExpr (annWith t a) params' body'
+        t        = curryType (map typ params'') (typ body')
+    return $ LamExpr (annWith t a) params'' body'
   where
     annotateParams = do
         let fldIs = concatMap (\(LamParam _ pat) -> patDeclIs pat) params
@@ -264,8 +292,65 @@ annotateExpr e@(NotExpr a e') = do
     (a', e'') <- annotateUnExpr boolT e a e'
     return $ NotExpr a' e''
 
+-- Member access.
+
+annotateExpr e@(MembExpr a e' acc) = do
+    e''       <- annotateExpr e'
+    (t, acc') <- annotateAccess (typ e'') e acc
+    return $ MembExpr (annWith t a) e'' (reverse acc')
+
+annotateExpr e@(TMembExpr _ _ []) =
+    error
+        $ "Type member access with an empty access list. Grammar should disallow this."
+        ++ show e
+annotateExpr e@(TMembExpr a tName (MembAcc a' i : as)) = do
+    luType <- lookupType tName
+    case luType of
+        Just t@(VType _ _ _ _ membs) -> do
+            luMemb <- getMember t i
+            case luMemb of
+                Just (Obj t' _) -> do
+                    (t'', as') <- annotateAccess t' e as
+                    return $ TMembExpr (annWith t'' a)
+                                       tName
+                                       (MembAcc (annWith t'' a') i : as')
+                Nothing -> raise $ Error.invMembAccess t i e
+        Just t  -> raise $ Error.invMembAccess t i e
+        Nothing -> raise $ Error.undeclaredType tName e
+
+-- This identifier.
+
+annotateExpr e@(ThisExpr a) = do
+    lookup <- lookupObj thisIdent
+    case lookup of
+        Just o  -> return $ ThisExpr (annWith (objType o) a)
+        Nothing -> raise $ Error.thisOutsideOfMember e
+
 annotateExpr e =
     error $ "This type of expressions is not supported yet: " ++ show e
+
+annotateAccess
+    :: (Print p, Position p)
+    => Type
+    -> p
+    -> [MemberAccess Pos]
+    -> TypeChecker (Type, [MemberAccess (TypeMetaData Pos)])
+annotateAccess t ctx = foldM access (t, [])
+  where
+    access (t@(VType tName _ _ _ membs), acc') (MembAcc a i) = do
+        luMemb <- getMember t i
+        case luMemb of
+            Just (Obj (FType p r) _) | canUnify p t ->
+                return (r, MembAcc (annWith r a) i : acc')
+            Just (Obj t' _) ->
+                error
+                    $  "The type"
+                    ++ show tName
+                    ++ " has a member "
+                    ++ show i
+                    ++ " whose first formal parameter is not of that type. This should be impossible."
+            Nothing -> raise $ Error.invMembAccess t i ctx
+    access (t, _) (MembAcc _ i) = raise $ Error.invMembAccess t i ctx
 
 annotateLit :: Literal Pos -> Literal (TypeMetaData Pos)
 annotateLit l@IntLit{}  = annWith integerT <$> l
@@ -283,7 +368,7 @@ annotateUnExpr
 annotateUnExpr t e a e' = do
     e'' <- annotateExpr e'
     let t' = typ e''
-    if canUnify t' t
+    if canUnify t t'
         then return (annWith t a, e'')
         else raise $ Error.invType t' t e' e
 
@@ -303,7 +388,7 @@ annotateBinExpr t e a e1 e2 = do
     e2' <- annotateExpr e2
     let t1 = typ e1'
         t2 = typ e2'
-    if canUnify t1 t && canUnify t2 t
+    if canUnify t t1 && canUnify t t2
         then return (annWith t a, e1', e2')
         else raise $ Error.invTypes t1 t2 t e1 e2 e
 
@@ -364,11 +449,10 @@ annotateAppExpr e a e1 e2 = do
         FType p r -> case unify p t2 of
             Just subst -> return (annWith (apply subst r) a, e1', e2')
             Nothing | p == SEType && t2 == unitT -> case e2 of
-                    LitExpr _ (UnitLit _) -> 
-                        do
-                        sideeffect
-                        return (annWith r a, e1', e2')
-                    _ -> raise $ Error.sideeffectNotUnitLit e2 e
+                LitExpr _ (UnitLit _) -> do
+                    sideeffect
+                    return (annWith r a, e1', e2')
+                _ -> raise $ Error.sideeffectNotUnitLit e2 e
             Nothing -> raise $ Error.invType t2 p e2 e
         _ -> raise $ Error.invApp t1 e
 
@@ -399,7 +483,7 @@ annotatePat p@(PatDecl a decl) = do
     bindAllVarsInOEnv oenv
     return (PatDecl (annWith t' a) decl', oenv)
 annotatePat p@(PatCtor a i flds) = do
-    cInst <- asksFreshInst i
+    cInst <- getFreshInst i
     case cInst of
         Just (ctor@(TypeCtor tName _ _), t) -> do
             fldPats <- mapM (annotateFldPattern ctor) flds
@@ -649,14 +733,18 @@ funParams
     :: [FunParam (TypeMetaData Pos)]
     -> BlockState
     -> [FunParam (TypeMetaData Pos)]
-funParams ps st | hasSideeffects st =
-    ps ++ [FParam (SEType, Nothing) (Ident "()")]
+funParams ps st | hasSideeffects st = case mLast ps of
+    Just (FParam (SEType, _) _) -> ps
+    _                           -> ps ++ [FParam (SEType, Nothing) (Ident "()")]
 funParams ps _ = ps
 
 lamParams
     :: [LambdaParam (TypeMetaData Pos)]
     -> BlockState
     -> [LambdaParam (TypeMetaData Pos)]
-lamParams ps st | hasSideeffects st =
-    ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
+lamParams ps st | hasSideeffects st = case mLast ps of
+    Just (LamParam (SEType, _) _) -> ps
+    _ -> ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
 lamParams ps _ = ps
+
+

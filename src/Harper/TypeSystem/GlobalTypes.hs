@@ -6,11 +6,11 @@ import           Harper.TypeSystem.Core
 
 globalTypes :: TypeStore
 globalTypes = Map.fromList
-    [ (Ident "Integer", integerT)
-    , (Ident "Bool"   , boolT)
-    , (Ident "Char"   , charT)
-    , (Ident "String" , stringT)
-    , (Ident "Unit"   , unitT)
+    [ (UIdent "Integer", integerT)
+    , (UIdent "Bool"   , boolT)
+    , (UIdent "Char"   , charT)
+    , (UIdent "String" , stringT)
+    , (UIdent "Unit"   , unitT)
     ]
 
 integerT :: Type

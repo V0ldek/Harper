@@ -62,25 +62,25 @@ CharLit. Literal ::= Char ;
 StrLit.  Literal ::= String ;
 BoolLit. Literal ::= BoolLiteral ;
 
--- Qualified identifiers
+-- Data access
 
-Qual.     Qualifier1 ::= Ident "." ;
-_.        Qualifier  ::= Qualifier1 ;
-Quals.    Qualifier  ::= Qualifier Qualifier1 ;
-ThisQual. Qualifier  ::= "this" "." ;
-DataQual. Qualifier  ::= "this" "." "data" "." ;
+MembAcc. MemberAccess ::= "." Ident ;
+
+separator nonempty MemberAccess "." ;
 
 -- Expressions
 
-ThisExpr.  Expression12 ::= "this" ;
+ThisExpr.  Expression13 ::= "this" ;
+TupExpr.   Expression13 ::= "(" TupleExpression ")" ;
+LitExpr.   Expression13 ::= Literal ;
+ObjExpr.   Expression13 ::= Ident ;
+
+TMembExpr. Expression12 ::= UIdent [MemberAccess] ;
+MembExpr.  Expression12 ::= Expression13 [MemberAccess] ;
+DataExpr.  Expression12 ::= "this.data" [MemberAccess] ;
 
 AdHocExpr. Expression11 ::= "val" "{" [AdHocFieldDecl] "}" ;
 VCtorExpr. Expression11 ::= "val" UIdent "{" [FieldAss] "}" ;
-TupExpr.   Expression11 ::= "(" TupleExpression ")" ;
-LitExpr.   Expression11 ::= Literal ;
-ObjExpr.   Expression11 ::= Ident ;
-CtorExpr.  Expression11 ::= UIdent ;
-QObjExpr.  Expression11 ::= Qualifier Ident ;
 
 MatchExpr. Expression10 ::= "match" Expression11 "{" [MatchExpressionClause] "}" ;
 
@@ -114,7 +114,7 @@ SeqExpr.   Expression1 ::= Expression2 "|" Expression1 ;
 
 LamExpr.   Expression ::= "\\" [LambdaParam] "=>" FunBody ;
 
-coercions Expression 12;
+coercions Expression 13;
 
 -- Tuple expressions.
 
@@ -161,13 +161,6 @@ MulStmt.         Statement1 ::= Ident "*=" Expression ";" ;
 DivStmt.         Statement1 ::= Ident "/=" Expression ";" ;
 PowStmt.         Statement1 ::= Ident "^=" Expression ";" ;
 CompStmt.        Statement1 ::= Ident "@=" Expression ";" ;
-QAssStmt.        Statement1 ::= Qualifier Ident ":=" Expression ";" ;
-QAddStmt.        Statement1 ::= Qualifier Ident "+=" Expression ";" ;
-QSubStmt.        Statement1 ::= Qualifier Ident "-=" Expression ";" ;
-QMulStmt.        Statement1 ::= Qualifier Ident "*=" Expression ";" ;
-QDivStmt.        Statement1 ::= Qualifier Ident "/=" Expression ";" ;
-QPowStmt.        Statement1 ::= Qualifier Ident "^=" Expression ";" ;
-QCompStmt.       Statement1 ::= Qualifier Ident "@=" Expression ";" ;
 _.               Statement1 ::= Statement2 ;
 
 EvalStmt.        Statement ::= "eval" Expression9 ";" ;

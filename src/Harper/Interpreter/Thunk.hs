@@ -1,5 +1,6 @@
 module Harper.Interpreter.Thunk
     ( makeThunk
+    , emplaceThunk
     )
 where
 import           Control.Monad.Reader
@@ -14,14 +15,19 @@ import           Harper.Output
 import           Harper.TypeSystem.Core         ( Type(..) )
 import           Harper.TypeSystem.Typing
 
--- Passing an object expression that evaluates to a Thunk will cause an infinite loop.
 makeThunk :: Expression Meta -> Eval -> Interpreter (Ptr, Object)
 makeThunk e eval = do
+    -- Alloc undefined to make sure we don't lose the location to something else during thunkPrep.
+    l <- alloc undefined
+    t <- emplaceThunk l e eval
+    return (l, t)
+
+emplaceThunk :: Ptr -> Expression Meta -> Eval -> Interpreter Object
+emplaceThunk l e eval = do
     t  <- thunkPrep e eval
-    l  <- newloc
     t' <- inCurrentScope $ runThunk t l
     modifyObjs (Map.insert l (Thunk t'))
-    return (l, Thunk t')
+    return $ Thunk t'
   where
     runThunk :: Interpreter Object -> Ptr -> Interpreter Object
     runThunk t l = do
@@ -50,17 +56,13 @@ thunkPrep e@(VCtorExpr a ctor flds) eval = do
 -- Object access.
 
 thunkPrep e@(ObjExpr a i) eval = do
-    lookup <- asksObjs (Map.lookup i)
+    lookup <- lookupObj i
     case lookup of
-        Just l -> do
-            o <- getsObjs (Map.! l)
-            case o of
-                Var (Just ptr) -> do
-                    ptr' <- copy ptr
-                    i'   <- newvar
-                    return $ localObjs (Map.insert i' ptr')
-                                       (eval $ ObjExpr a i')
-                _ -> return $ eval e
+        Just (Var (Just ptr)) -> do
+            ptr' <- copy ptr
+            i' <- newvar
+            return $ localObjs (Map.insert i' ptr') (eval $ ObjExpr a i')
+        Just _ -> return $ eval e
         Nothing ->
             error
                 $  "Unassigned identifier. Type check should've caught this."
@@ -108,7 +110,17 @@ thunkPrep (OrExpr  a e1 e2) eval = thunkPrepBin e1 e2 (OrExpr a) eval
 
 thunkPrep (NotExpr a e    ) eval = thunkPrepUn e (NotExpr a) eval
 
-snapshotExpr e = error
+-- Member access.
+
+thunkPrep (MembExpr a e acc) eval =
+    thunkPrepUn e (\e' -> MembExpr a e' acc) eval
+thunkPrep e@TMembExpr{} eval = return $ eval e
+
+-- This identifier.
+
+thunkPrep e@ThisExpr{}  eval = return $ eval e
+
+thunkPrep e             _    = error
     ("Evaluating this type of expressions is not implemented yet: " ++ show e)
 
 thunkPrepUn

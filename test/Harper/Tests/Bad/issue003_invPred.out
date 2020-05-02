@@ -1,4 +1,4 @@
-Error: expression `1` of type 'Integer' cannot be used as a predicate in a conditional. 
+Error: expression `1` of type `Integer` cannot be used as a predicate in a conditional. 
 During evaluation of: 
 if 1 { 
     return n ;

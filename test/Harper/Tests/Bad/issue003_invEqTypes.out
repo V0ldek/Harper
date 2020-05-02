@@ -1,4 +1,4 @@
-Error: expressions `a` and `b` have invalid types 'Integer', 'Unit'; only values of the same, non function type can be equated.
+Error: expressions `a` and `b` have invalid types `Integer`, `Unit`; only values of the same, non function type can be equated.
 During evaluation of: 
  a == b
 Located at line 3 column 6 

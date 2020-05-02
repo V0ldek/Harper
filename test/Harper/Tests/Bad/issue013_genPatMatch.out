@@ -1,4 +1,4 @@
-Error: the pattern of type 'c& -> d&' cannot be used to match an expression of type 'Bool -> Integer'.
+Error: the pattern of type `c& -> d&` cannot be used to match an expression of type `Bool -> Integer`.
 During evaluation of:
 (y :: c -> d)=> return y ;
 

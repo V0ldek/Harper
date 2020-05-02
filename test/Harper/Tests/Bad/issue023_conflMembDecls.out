@@ -1,0 +1,8 @@
+Error: conflicting member declarations of `foo` in the declaration of type variant `A`.
+Conflicting declarations:
+ foo :: a -> a
+Located at line 3 column 9
+ foo :: b -> b
+Located at line 4 column 9
+
+Execution terminated with an error: type error.

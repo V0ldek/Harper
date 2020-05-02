@@ -118,28 +118,22 @@ instance Functor Literal where
         CharLit a char -> CharLit (f a) char
         StrLit a string -> StrLit (f a) string
         BoolLit a boolliteral -> BoolLit (f a) (fmap f boolliteral)
-data Qualifier a
-    = Qual a Ident
-    | Quals a (Qualifier a) (Qualifier a)
-    | ThisQual a
-    | DataQual a
+data MemberAccess a = MembAcc a Ident
   deriving (Eq, Ord, Show, Read)
 
-instance Functor Qualifier where
+instance Functor MemberAccess where
     fmap f x = case x of
-        Qual a ident -> Qual (f a) ident
-        Quals a qualifier1 qualifier2 -> Quals (f a) (fmap f qualifier1) (fmap f qualifier2)
-        ThisQual a -> ThisQual (f a)
-        DataQual a -> DataQual (f a)
+        MembAcc a ident -> MembAcc (f a) ident
 data Expression a
     = ThisExpr a
-    | AdHocExpr a [AdHocFieldDecl a]
-    | VCtorExpr a UIdent [FieldAss a]
     | TupExpr a (TupleExpression a)
     | LitExpr a (Literal a)
     | ObjExpr a Ident
-    | CtorExpr a UIdent
-    | QObjExpr a (Qualifier a) Ident
+    | TMembExpr a UIdent [MemberAccess a]
+    | MembExpr a (Expression a) [MemberAccess a]
+    | DataExpr a [MemberAccess a]
+    | AdHocExpr a [AdHocFieldDecl a]
+    | VCtorExpr a UIdent [FieldAss a]
     | MatchExpr a (Expression a) [MatchExpressionClause a]
     | AppExpr a (Expression a) (Expression a)
     | CompExpr a (Expression a) (Expression a)
@@ -166,13 +160,14 @@ data Expression a
 instance Functor Expression where
     fmap f x = case x of
         ThisExpr a -> ThisExpr (f a)
-        AdHocExpr a adhocfielddecls -> AdHocExpr (f a) (map (fmap f) adhocfielddecls)
-        VCtorExpr a uident fieldasss -> VCtorExpr (f a) uident (map (fmap f) fieldasss)
         TupExpr a tupleexpression -> TupExpr (f a) (fmap f tupleexpression)
         LitExpr a literal -> LitExpr (f a) (fmap f literal)
         ObjExpr a ident -> ObjExpr (f a) ident
-        CtorExpr a uident -> CtorExpr (f a) uident
-        QObjExpr a qualifier ident -> QObjExpr (f a) (fmap f qualifier) ident
+        TMembExpr a uident memberaccesss -> TMembExpr (f a) uident (map (fmap f) memberaccesss)
+        MembExpr a expression memberaccesss -> MembExpr (f a) (fmap f expression) (map (fmap f) memberaccesss)
+        DataExpr a memberaccesss -> DataExpr (f a) (map (fmap f) memberaccesss)
+        AdHocExpr a adhocfielddecls -> AdHocExpr (f a) (map (fmap f) adhocfielddecls)
+        VCtorExpr a uident fieldasss -> VCtorExpr (f a) uident (map (fmap f) fieldasss)
         MatchExpr a expression matchexpressionclauses -> MatchExpr (f a) (fmap f expression) (map (fmap f) matchexpressionclauses)
         AppExpr a expression1 expression2 -> AppExpr (f a) (fmap f expression1) (fmap f expression2)
         CompExpr a expression1 expression2 -> CompExpr (f a) (fmap f expression1) (fmap f expression2)
@@ -238,13 +233,6 @@ data Statement a
     | DivStmt a Ident (Expression a)
     | PowStmt a Ident (Expression a)
     | CompStmt a Ident (Expression a)
-    | QAssStmt a (Qualifier a) Ident (Expression a)
-    | QAddStmt a (Qualifier a) Ident (Expression a)
-    | QSubStmt a (Qualifier a) Ident (Expression a)
-    | QMulStmt a (Qualifier a) Ident (Expression a)
-    | QDivStmt a (Qualifier a) Ident (Expression a)
-    | QPowStmt a (Qualifier a) Ident (Expression a)
-    | QCompStmt a (Qualifier a) Ident (Expression a)
     | EvalStmt a (Expression a)
   deriving (Eq, Ord, Show, Read)
 
@@ -271,13 +259,6 @@ instance Functor Statement where
         DivStmt a ident expression -> DivStmt (f a) ident (fmap f expression)
         PowStmt a ident expression -> PowStmt (f a) ident (fmap f expression)
         CompStmt a ident expression -> CompStmt (f a) ident (fmap f expression)
-        QAssStmt a qualifier ident expression -> QAssStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QAddStmt a qualifier ident expression -> QAddStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QSubStmt a qualifier ident expression -> QSubStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QMulStmt a qualifier ident expression -> QMulStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QDivStmt a qualifier ident expression -> QDivStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QPowStmt a qualifier ident expression -> QPowStmt (f a) (fmap f qualifier) ident (fmap f expression)
-        QCompStmt a qualifier ident expression -> QCompStmt (f a) (fmap f qualifier) ident (fmap f expression)
         EvalStmt a expression -> EvalStmt (f a) (fmap f expression)
 data MatchStatementClause a
     = MatchStmtClause a (Pattern a) (Statement a)

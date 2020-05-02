@@ -1,6 +1,8 @@
 Error: expression `"Str"` has invalid type `String`; expected `Integer`.
-During evaluation of: 
- f n "Str"
-Located at line 5 column 7
+During evaluation of:
+ t . foo "Str"
+
+Located at line 9 column 12
+
 
 Execution terminated with an error: type error.

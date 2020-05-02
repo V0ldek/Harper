@@ -42,7 +42,7 @@ showsPrt :: Print a => a -> ShowS
 showsPrt x = (render (prt 0 x) ++)
 
 outputMsg :: String -> HarperOutput ()
-outputMsg s = output (s ++)
+outputMsg s = output (s ++) 
 
 outputLog :: ShowS -> HarperOutput ()
 outputLog s = output msg
@@ -72,8 +72,9 @@ outputConflDecls s ctxs = output msg
       . ("\nConflicting declarations:\n" ++)
       . prtContexts
       . ansiFgColor white
-  prtContexts =
-    foldl' (\f c -> f . showsPrt c . prtPosition c . ("\n" ++)) id ctxs
+  prtContexts = foldl' (\f c -> f . showsPrt c . prtPosition c . ("\n" ++))
+                       id
+                       (nubBy (\c1 c2 -> pos c1 == pos c2) $ sortOn pos ctxs)
 
 prtPosition :: Position a => a -> ShowS
 prtPosition a = case pos a of

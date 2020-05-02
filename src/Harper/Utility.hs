@@ -21,6 +21,10 @@ findDupsBy f ds = collect $ foldr checkForDup (Map.empty, []) ds
   collect (m, dups) =
     let (ks, as) = unzip dups in (ks, foldr (\k as' -> m Map.! k : as') as ks)
 
+mLast :: [a] -> Maybe a
+mLast xs | null xs = Nothing
+mLast xs           = Just $ last xs
+
 itu :: Ident -> UIdent
 itu (Ident s) = UIdent s
 
