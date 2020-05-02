@@ -1,0 +1,6 @@
+Error: type `RefBox` does not implement the function `a`.
+During evaluation of:
+  b . a
+Located at line 24 column 12
+
+Execution terminated with an error: type error.

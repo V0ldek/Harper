@@ -66,7 +66,7 @@ BoolLit. Literal ::= BoolLiteral ;
 
 MembAcc. MemberAccess ::= "." Ident ;
 
-separator nonempty MemberAccess "." ;
+separator nonempty MemberAccess "" ;
 
 -- Expressions
 
@@ -161,6 +161,13 @@ MulStmt.         Statement1 ::= Ident "*=" Expression ";" ;
 DivStmt.         Statement1 ::= Ident "/=" Expression ";" ;
 PowStmt.         Statement1 ::= Ident "^=" Expression ";" ;
 CompStmt.        Statement1 ::= Ident "@=" Expression ";" ;
+DataAddStmt.     Statement1 ::= "this.data" "." Ident "+=" Expression ";" ;
+DataSubStmt.     Statement1 ::= "this.data" "." Ident "-=" Expression ";" ;
+DataMulStmt.     Statement1 ::= "this.data" "." Ident "*=" Expression ";" ;
+DataDivStmt.     Statement1 ::= "this.data" "." Ident "/=" Expression ";" ;
+DataAssStmt.     Statement1 ::= "this.data" "." Ident ":=" Expression ";" ;
+DataPowStmt.     Statement1 ::= "this.data" "." Ident "^=" Expression ";" ;
+DataCompStmt.    Statement1 ::= "this.data" "." Ident "@=" Expression ";" ;
 _.               Statement1 ::= Statement2 ;
 
 EvalStmt.        Statement ::= "eval" Expression9 ";" ;

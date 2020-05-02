@@ -1,0 +1,6 @@
+Error: cannot match function's `f` declared type `RefBox Integer -> Integer` with its actual type `RefBox Integer -> (impure -> Integer)`.
+During evaluation of:
+f b = return 42
+Located at line 21 column 1
+
+Execution terminated with an error: type error.

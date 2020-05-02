@@ -1,0 +1,6 @@
+Error: constructor of `RefBox` has an invalid signature `a -> impure`. Constructors must be impure functions returning an instance of the type.
+During evaluation of:
+  ctor :: a -> impure
+Located at line 6 column 4
+
+Execution terminated with an error: type error.
