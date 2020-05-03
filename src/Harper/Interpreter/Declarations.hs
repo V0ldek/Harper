@@ -16,7 +16,9 @@ import           Harper.Abs
 import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Thunk
-import           Harper.TypeSystem.Core         ( thisIdent )
+import           Harper.TypeSystem.Core         ( ctorIdent
+                                                , thisIdent
+                                                )
 
 typeDecls :: Exec -> [TypeDecl Meta] -> Interpreter TEnv
 typeDecls exec ds = do
@@ -27,16 +29,19 @@ declCtors :: Exec -> TypeDecl Meta -> Interpreter TEnv
 declCtors exec (ValTDecl a sig@(TSig _ tName _) body) =
     declCtors exec (ValTUDecl a sig [TVarDecl a tName body])
 declCtors exec (ValTUDecl _ (TSig _ tName _) vs) = do
-    cs <- mapM (declCtor exec tName) vs
+    cs <- mapM (declVCtor exec tName) vs
     let iscs = zip (map (\(ValueCtor _ i _) -> i) cs) cs
     return $ Map.fromList iscs
+declCtors exec (RefTDecl _ (TSig _ tName _) body) = do
+    c <- declRCtor exec tName body
+    return $ Map.fromList [(tName, c)]
 
-declCtor :: Exec -> UIdent -> TypeVariantDecl Meta -> Interpreter ValueCtor
-declCtor exec tName (TVarDecl _ i body) = do
+declVCtor :: Exec -> UIdent -> TypeVariantDecl Meta -> Interpreter TCtor
+declVCtor exec tName (TVarDecl _ i body) = do
     let membs = case body of
             (TBody _ membs      ) -> membs
             (DataTBody _ _ membs) -> membs
-    let decls = [ decl | TMemFDecl _ decl <- membs ]
+        decls = [ decl | TMemFDecl _ decl <- membs ]
     autoMembs <- case body of
         TBody{}              -> return []
         (DataTBody _ flds _) -> generateAutoMembs flds
@@ -54,7 +59,7 @@ declCtor exec tName (TVarDecl _ i body) = do
         o   <- getObj thisIdent
         mo' <- evalObj o
         case mo' of
-            Just (Value _ _data) -> case Map.lookup i _data of
+            Just (Inst _ _data) -> case Map.lookup i _data of
                 Just l' -> do
                     o'   <- getsObjs (Map.! l')
                     mo'' <- evalObj o'
@@ -77,6 +82,36 @@ declCtor exec tName (TVarDecl _ i body) = do
                     ++ show i
                     ++ " "
                     ++ show mo'
+
+declRCtor :: Exec -> UIdent -> TypeBody Meta -> Interpreter TCtor
+declRCtor exec tName body = do
+    let (membs, flds) = case body of
+            (TBody _ membs         ) -> (membs, [])
+            (DataTBody _ flds membs) -> (membs, flds)
+        decls = [ decl | TMemFDecl _ decl <- membs ]
+    declEnv <- funDecls decls exec
+    let ctorPtr = declEnv Map.! ctorIdent
+        t       = RefCtor tName declEnv
+    () <- setupCtor ctorPtr flds t
+    return t
+  where
+    setupCtor ptr flds t = do
+        ctor <- getsObjs (Map.! ptr)
+        let initData = Map.fromList
+                [ (i, Var Nothing) | TFldDecl _ (THint _ i _) <- flds ]
+            Fun ctorParams ctorBody ctorEnv = ctor
+            ctor' = Fun ctorParams (transBody ctorBody) ctorEnv
+        modifyObjs (Map.insert ptr ctor')
+      where
+        transBody body = do
+            let dataIs     = [ i | TFldDecl _ (THint _ i _) <- flds ]
+                dataLength = length dataIs
+            dataPtrs <- allocs (replicate dataLength (Var Nothing))
+            let initData = Map.fromList $ zip dataIs dataPtrs
+                inst     = Inst t initData
+            instPtr <- alloc inst
+            thisPtr <- alloc (Ref instPtr)
+            localObjs (Map.insert thisIdent thisPtr) body
 
 funDecls :: [FunDecl Meta] -> Exec -> Interpreter OEnv
 funDecls ds interp = do

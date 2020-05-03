@@ -483,7 +483,7 @@ invCtorType t ctor ctx = do
         . shows t
         . ("` has an invalid type `" ++)
         . shows ctor
-        . ("`. A constructor must have a type matching `* -> impure -> " ++)
+        . ("`. A constructor must have a type matching `* -> " ++)
         . shows t
         . ("`." ++)
         )

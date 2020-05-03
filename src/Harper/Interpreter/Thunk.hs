@@ -60,7 +60,7 @@ thunkPrep e@(ObjExpr a i) eval = do
     case lookup of
         Just (Var (Just ptr)) -> do
             ptr' <- copy ptr
-            i' <- newvar
+            i'   <- newvar
             return $ localObjs (Map.insert i' ptr') (eval $ ObjExpr a i')
         Just _ -> return $ eval e
         Nothing ->
@@ -114,13 +114,26 @@ thunkPrep (NotExpr a e    ) eval = thunkPrepUn e (NotExpr a) eval
 
 thunkPrep (MembExpr a e acc) eval =
     thunkPrepUn e (\e' -> MembExpr a e' acc) eval
-thunkPrep e@TMembExpr{} eval = return $ eval e
+thunkPrep e@TMembExpr{}                       eval = return $ eval e
 
 -- This identifier.
 
-thunkPrep e@ThisExpr{}  eval = return $ eval e
+thunkPrep e@ThisExpr{}                        eval = return $ eval e
 
-thunkPrep e             _    = error
+thunkPrep e@(DataExpr a (MembAcc a' i : acc)) eval = do
+    inst <- getThis
+    let flds   = _data inst
+        fldPtr = flds Map.! i
+    fld <- getByPtr fldPtr
+    case fld of
+        Var (Just ptr) -> do
+            ptr' <- copy ptr
+            i'   <- newvar
+            return $ localObjs (Map.insert i' ptr')
+                               (eval $ MembExpr a (ObjExpr a' i') acc)
+        _ -> return $ eval e
+
+thunkPrep e _ = error
     ("Evaluating this type of expressions is not implemented yet: " ++ show e)
 
 thunkPrepUn
@@ -157,7 +170,7 @@ thunkPrepApp
     -> Eval
     -> Interpreter (Interpreter Object)
 thunkPrepApp e1 e2 f eval = case typ e1 of
-    FType SEType _ -> do
+    FType t _ | t == SEType || t == ImpType -> do
         o <- eval (f e1 e2)
         return $ return o
     _ -> thunkPrepBin e1 e2 f eval

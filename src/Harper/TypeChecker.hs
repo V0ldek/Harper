@@ -134,11 +134,7 @@ annotate d@(FDecl a i params body) = do
             ++ " and non empty param list "
             ++ show ps
             ++ ". Arity check fail."
-    curryType ps r = foldr combine r ps
-      where
-        combine SEType  r@(FType SEType  _) = r
-        combine ImpType r@(FType ImpType _) = r
-        combine p       r                   = FType p r
+    curryType ps r = foldr FType r ps
 
 annotateExpr :: Expression Pos -> TypeChecker (Expression (TypeMetaData Pos))
 
@@ -822,7 +818,7 @@ lamParams ps st | hasSideeffects st = case mLast ps of
 lamParams ps _ | any (\(LamParam (t, _) _) -> paramIsImpure t) ps =
     case mLast ps of
         Just (LamParam (t, _) _) | t == ImpType || t == SEType -> ps
-        _ -> ps ++ [LamParam (ImpType, Nothing) (PatDisc (SEType, Nothing))]
+        _ -> ps ++ [LamParam (ImpType, Nothing) (PatDisc (ImpType, Nothing))]
 lamParams ps _ = ps
 
 paramIsImpure :: Type -> Bool

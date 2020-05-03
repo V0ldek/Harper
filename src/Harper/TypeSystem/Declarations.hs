@@ -156,9 +156,9 @@ declToType d@(RefTDecl _ (TSig _ tName tParams) (DataTBody a'' fldDecls membDecl
         then return ()
         else raise $ Error.invCtorType t ctor d
       where
-        matchTail t (FType ImpType t') | canUnify t t' = True
-        matchTail t (FType _ r)                        = matchTail t r
-        matchTail _ _                                  = False
+        matchTail t (FType _ r) | canUnify t r = True
+        matchTail t (FType _ r)                = matchTail t r
+        matchTail _ _                          = False
 
 collectMembs
     :: Map.Map Ident [TypeHint Pos]

@@ -25,6 +25,7 @@ import           Harper.Interpreter.Thunk
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.TypeSystem.Core         ( TypeCtor(..)
+                                                , ctorIdent
                                                 , thisIdent
                                                 )
 import           Harper.TypeSystem.GlobalTypes
@@ -41,9 +42,10 @@ interpret (Prog _ ds) = do
     let fds = [ fd | TopLvlFDecl _ fd <- ds ]
     let tds = [ td | TopLvlTDecl _ td <- ds ]
     globals <- nativeObjs
-    tenv    <- localObjs (const globals) (typeDecls call tds)
     userEnv <- localObjs (const globals) (funDecls fds call)
-    let env = Env (Map.union userEnv globals) tenv
+    let oenv = Map.union userEnv globals
+    tenv <- localObjs (const oenv) (typeDecls call tds)
+    let env = Env oenv tenv
     o <- local (const env) runMain
     printObj o
 
@@ -79,7 +81,7 @@ eval e@(VCtorExpr _ ctor flds           ) = do
     case lookup of
         Just t@ValueCtor{} -> do
             _data <- mapM fldAssToData flds
-            return $ Value t (Map.fromList _data)
+            return $ Inst t (Map.fromList _data)
         Nothing ->
             error
                 $  "Undeclared ctor. Type check should've caught this."
@@ -224,8 +226,21 @@ eval e@(MembExpr _ e' acc) = do
 
 eval e@(TMembExpr _ _ []) =
     error
-        "Type member access with empty access list. Grammar should disallow this."
+        "Type member access with an empty access list. Grammar should disallow this."
 
+eval e@(TMembExpr _ tName (MembAcc _ i : acc)) | i == ctorIdent = do
+    t <- asksTypes (Map.! tName)
+    case t of
+        RefCtor _ membs -> do
+            let ctorPtr = membs Map.! i
+            ctor <- getsObjs (Map.! ctorPtr)
+            evalAcc ctor acc e
+        _ ->
+            error
+                $ "Non reference type asked for ctor. Type check should've caught this. "
+                ++ show t
+                ++ " "
+                ++ show e
 eval e@(TMembExpr _ _ (a : acc)) = do
     env <- asks objs
     let o = Fun [thisIdent] accBody env in evalAcc o acc e
@@ -244,6 +259,18 @@ eval (ThisExpr _) = do
             error
                 "`this` was not passed as a first argument. This should be impossible."
 
+eval (DataExpr _ []) =
+    error "Data access with an empty access list. Grammar should disallow this."
+eval e@(DataExpr a (MembAcc _ i : acc)) = do
+    inst <- getThis
+    let flds   = _data inst
+        fldPtr = flds Map.! i
+    fld <- getByPtr fldPtr
+    mo  <- evalObj fld
+    case mo of
+        Just o  -> evalAcc o acc e
+        Nothing -> raise $ Error.unassVar i e
+
 eval e =
     error ("Evaluating this type of values is not implemented yet: " ++ show e)
 
@@ -257,29 +284,44 @@ evalAcc o []                      _   = return o
 evalAcc o (e@(MembAcc _ i) : acc) ctx = do
     mo' <- evalObj o
     case mo' of
-        Just (Value (ValueCtor tName cName membs) _) ->
+        Just (Inst (ValueCtor tName cName membs) _) ->
             case Map.lookup i membs of
-                Just ptr -> do
-                    memb <- getsObjs (Map.! ptr)
-                    mo'  <- evalObj memb
-                    case mo' of
-                        Just (Fun (p : ps) body env) -> do
-                            ptr <- alloc o
-                            let env' = Map.insert p ptr env
-                            o' <- case ps of
-                                [] -> localObjs (const env') body
-                                ps -> return $ Fun ps body env'
-                            evalAcc o' acc ctx
-                        Just o' ->
-                            error
-                                $ "Member in member access is not a function type of arity > 0. Type check shoudl've caught this."
-                                ++ show o'
-                        Nothing -> raise $ Error.unassVar i e
-                Nothing -> raise $ Error.notDeclOnVar tName cName i ctx
+                Just ptr -> continueAccess ptr
+                Nothing  -> raise $ Error.notDeclOnVar tName cName i ctx
+        Just (Ref ptr) -> do
+            o <- getByPtr ptr
+            let Inst (RefCtor tName membs) _ = o
+            case Map.lookup i membs of
+                Just ptr -> continueAccess ptr
+                Nothing ->
+                    error
+                        $  "Type "
+                        ++ show tName
+                        ++ " has no member "
+                        ++ show i
+                        ++ " used in member access. Type check should've caught this."
+                        ++ show e
         _ ->
             error
-                $ "A non-value type was used in member access. Type check should've caught this."
+                $ "A non-instance was used in member access. Type check should've caught this."
                 ++ show mo'
+  where
+    continueAccess ptr = do
+        memb <- getsObjs (Map.! ptr)
+        mo'  <- evalObj memb
+        case mo' of
+            Just (Fun (p : ps) body env) -> do
+                ptr <- alloc o
+                let env' = Map.insert p ptr env
+                o' <- case ps of
+                    [] -> localObjs (const env') body
+                    ps -> return $ Fun ps body env'
+                evalAcc o' acc ctx
+            Just o' ->
+                error
+                    $ "Member in member access is not a function type of arity > 0. Type check shoudl've caught this."
+                    ++ show o'
+            Nothing -> raise $ Error.unassVar i e
 
 apply :: Object -> Expression Meta -> Interpreter Object
 apply (Fun (p : ps) s env) argV = do
@@ -289,12 +331,7 @@ apply (Fun (p : ps) s env) argV = do
         [] -> localObjs (const env') s
         _  -> return $ Fun ps s env'
 apply (Fun [] s env) (LitExpr _ (UnitLit _)) = localObjs (const env) s
-apply f argV =
-    error
-        $  "Overapplication at runtime. Type check should have caught this. "
-        ++ show argV
-        ++ " "
-        ++ show f
+apply o              _                       = return o
 
 call :: Statement Meta -> Interpreter Object
 call s = exec s return f where f = return PUnit
@@ -367,36 +404,58 @@ exec d@(DconStmt _ pat e) _ k =
 -- Assignment.
 
 exec s@(AssStmt _ i e) kRet k = do
-    lookup <- asksObjs (Map.lookup i)
-    case lookup of
-        Just l -> do
-            o <- getsObjs (Map.! l)
-            case o of
-                Var (Just ptr) -> do
-                    _ <- emplaceThunk ptr e eval
-                    k
-                Var Nothing -> do
-                    (ptr, _) <- makeThunk e eval
-                    modifyObjs (Map.insert l (Var $ Just ptr))
-                    k
-                o ->
-                    error
-                        $ "Invalid assignment. Type check should've caught this."
-                        ++ show s
-        Nothing ->
+    l <- asksObjs (Map.! i)
+    o <- getByPtr l
+    case o of
+        Var (Just ptr) -> do
+            _ <- emplaceThunk ptr e eval
+            k
+        Var Nothing -> do
+            (ptr, _) <- makeThunk e eval
+            modifyObjs (Map.insert l (Var $ Just ptr))
+            k
+        o ->
             error
-                $  "Undeclared ident. Type check should've caught this."
+                $  "Invalid assignment. Type check should've caught this."
                 ++ show s
-exec (AddStmt p i e) kRet k =
-    exec (AssStmt p i (AddExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
-exec (SubStmt p i e) kRet k =
-    exec (AssStmt p i (SubExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
-exec (MulStmt p i e) kRet k =
-    exec (AssStmt p i (MulExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
-exec (DivStmt p i e) kRet k =
-    exec (AssStmt p i (DivExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
-exec (PowStmt p i e) kRet k =
-    exec (AssStmt p i (PowExpr p (ObjExpr (typ p, Nothing) i) e)) kRet k
+exec (AddStmt a i e) kRet k =
+    exec (AssStmt a i (AddExpr a (ObjExpr a i) e)) kRet k
+exec (SubStmt a i e) kRet k =
+    exec (AssStmt a i (SubExpr a (ObjExpr a i) e)) kRet k
+exec (MulStmt a i e) kRet k =
+    exec (AssStmt a i (MulExpr a (ObjExpr a i) e)) kRet k
+exec (DivStmt a i e) kRet k =
+    exec (AssStmt a i (DivExpr a (ObjExpr a i) e)) kRet k
+exec (PowStmt a i e) kRet k =
+    exec (AssStmt a i (PowExpr a (ObjExpr a i) e)) kRet k
+
+exec s@(DataAssStmt _ i e) kRet k = do
+    inst <- getThis
+    let flds   = _data inst
+        fldPtr = flds Map.! i
+    fld <- getByPtr fldPtr
+    case fld of
+        Var (Just ptr) -> do
+            _ <- emplaceThunk ptr e eval
+            k
+        Var Nothing -> do
+            (ptr, _) <- makeThunk e eval
+            modifyObjs (Map.insert fldPtr (Var $ Just ptr))
+            k
+        o ->
+            error
+                $  "Invalid assignment. Type check should've caught this."
+                ++ show s
+exec (DataAddStmt a i e) kRet k =
+    exec (DataAssStmt a i (AddExpr a (DataExpr a [MembAcc a i]) e)) kRet k
+exec (DataSubStmt a i e) kRet k =
+    exec (DataAssStmt a i (SubExpr a (DataExpr a [MembAcc a i]) e)) kRet k
+exec (DataMulStmt a i e) kRet k =
+    exec (DataAssStmt a i (MulExpr a (DataExpr a [MembAcc a i]) e)) kRet k
+exec (DataDivStmt a i e) kRet k =
+    exec (DataAssStmt a i (DivExpr a (DataExpr a [MembAcc a i]) e)) kRet k
+exec (DataPowStmt a i e) kRet k =
+    exec (DataAssStmt a i (PowExpr a (DataExpr a [MembAcc a i]) e)) kRet k
 
 exec (EvalStmt _ e) kRet k = do
     _ <- eval e
@@ -421,10 +480,12 @@ evalIntBinOp e = do
         (PInt n1, PInt n2) -> do
             when (cfz && n2 == 0) (raise $ Error.divByZero e2 e)
             return $ PInt $ n1 `op` n2
-        _ ->
+        ts ->
             error
                 $ "Invalid type in binary integer operator. Type check should have caught this. "
                 ++ show e
+                ++ " "
+                ++ show ts
 
 evalEqOp :: Expression Meta -> Interpreter Object
 evalEqOp e = do
@@ -440,10 +501,12 @@ evalEqOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 == s2
         (PChar c1, PChar c2) -> f $ c1 == c2
         (PUnit   , PUnit   ) -> f True
-        _ ->
+        ts ->
             error
                 $ "Invalid types in eq operator. Type check should have caught this. "
                 ++ show e
+                ++ " "
+                ++ show ts
 
 evalCmpOp :: Expression Meta -> Interpreter Object
 evalCmpOp e = do
@@ -460,10 +523,12 @@ evalCmpOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 `compare` s2
         (PChar c1, PChar c2) -> f $ c1 `compare` c2
         (PUnit   , PUnit   ) -> f EQ
-        _ ->
+        ts ->
             error
                 $ "Invalid types in cmp operator. Type check should have caught this. "
                 ++ show e
+                ++ " "
+                ++ show ts
 
 evalThunk :: Object -> Interpreter Object
 evalThunk (Thunk x) = x
@@ -507,10 +572,10 @@ patMatch' (PatDecl _ decl) o kMatch _ = do
 patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
     o' <- evalThunk o
     case o' of
-        v@(Value t _) | ctorName t == c -> matchFlds v flds kMatch kElse
-        _                               -> kElse
+        v@(Inst t _) | ctorName t == c -> matchFlds v flds kMatch kElse
+        _                              -> kElse
   where
-    matchFlds v@(Value t d) (PatFld _ i p : flds) kMatch kElse =
+    matchFlds v@(Inst t d) (PatFld _ i p : flds) kMatch kElse =
         case Map.lookup i d of
             Just l -> do
                 o <- getsObjs (Map.! l)
@@ -535,7 +600,7 @@ printObj e@Thunk{} = do
 printObj (Var (Just ptr)) = do
     o <- getsObjs (Map.! ptr)
     printObj o
-printObj (Value t d) = do
+printObj (Inst t d) = do
     ss <- mapM showFld (Map.toList d)
     let s = foldr (.) id (intersperse (" " ++) ss)
     return $ shows t . (" { " ++) . s . (" }" ++)
@@ -545,7 +610,6 @@ printObj (Value t d) = do
         s <- printObj o
         return $ showsPrt i . (": " ++) . s
 printObj Fun{} = return ("<fun>" ++)
-
 
 -- Native functions.
 

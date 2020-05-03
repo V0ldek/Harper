@@ -147,6 +147,7 @@ unify t1 t2 = fromMaybe
         foldM accSubst Map.empty (zip ps1 ps2)
     unify' (RType i1 _ ps1 _ _) (RType i2 _ ps2 _ _) | i1 == i2 =
         foldM accSubst Map.empty (zip ps1 ps2)
+    unify' SEType ImpType   = return Map.empty
     unify' t1 t2 | t1 == t2 = return Map.empty
     unify' t1 t2            = Nothing
 

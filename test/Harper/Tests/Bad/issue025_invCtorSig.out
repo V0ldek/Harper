@@ -1,14 +1,14 @@
-Error: the constructor of the type `RefBox a&` has an invalid type `a& -> RefBox a&`. A constructor must have a type matching `* -> impure -> RefBox a&`.
+Error: the constructor of the type `RefBox a&` has an invalid type `a& -> Unit`. A constructor must have a type matching `* -> RefBox a&`.
 During evaluation of:
   ref RefBox a = {
       data = {
           a :: a ;
       }
 
-      ctor :: a -> RefBox a ;
+      ctor :: a -> () ;
       ctor a = {
           this.data . a := a ;
-          return this ;
+          return () ;
       } ;
 
       get :: impure -> a ;
