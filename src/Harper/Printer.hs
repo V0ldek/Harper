@@ -6,7 +6,6 @@ module Harper.Printer where
 import Harper.Abs
 import Data.Char
 
-
 -- the top-level printing method
 printTree :: Print a => a -> String
 printTree = render . prt 0
@@ -166,7 +165,7 @@ instance Print (MemberAccess a) where
   prt i e = case e of
     MembAcc _ id -> prPrec i 0 (concatD [doc (showString "."), prt 0 id])
   prtList _ [x] = (concatD [prt 0 x])
-  prtList _ (x:xs) = (concatD [prt 0 x, doc (showString "."), prt 0 xs])
+  prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])
 instance Print (Expression a) where
   prt i e = case e of
     ThisExpr _ -> prPrec i 13 (concatD [doc (showString "this")])
@@ -239,6 +238,13 @@ instance Print (Statement a) where
     DivStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "/="), prt 0 expression, doc (showString ";")])
     PowStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "^="), prt 0 expression, doc (showString ";")])
     CompStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString "@="), prt 0 expression, doc (showString ";")])
+    DataAddStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "+="), prt 0 expression, doc (showString ";")])
+    DataSubStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "-="), prt 0 expression, doc (showString ";")])
+    DataMulStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "*="), prt 0 expression, doc (showString ";")])
+    DataDivStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "/="), prt 0 expression, doc (showString ";")])
+    DataAssStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString ":="), prt 0 expression, doc (showString ";")])
+    DataPowStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "^="), prt 0 expression, doc (showString ";")])
+    DataCompStmt _ id expression -> prPrec i 1 (concatD [doc (showString "this.data"), doc (showString "."), prt 0 id, doc (showString "@="), prt 0 expression, doc (showString ";")])
     EvalStmt _ expression -> prPrec i 0 (concatD [doc (showString "eval"), prt 9 expression, doc (showString ";")])
   prtList _ [x] = (concatD [prt 0 x])
   prtList _ (x:xs) = (concatD [prt 0 x, prt 0 xs])

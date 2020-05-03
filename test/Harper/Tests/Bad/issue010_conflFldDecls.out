@@ -1,12 +1,12 @@
-Error: conflicting field names `a`, `c`.
-During evaluation of:
-data = {
-  a :: a ;
-  a :: b ;
-  c :: c ;
-  c :: d ;
-  }
-
-Located at line 2 column 3
+Error: conflicting field names `a`, `c` in the declaration of `Bag`.
+Conflicting declarations:
+ a :: a
+Located at line 3 column 5
+ a :: b
+Located at line 3 column 13
+ c :: c
+Located at line 3 column 21
+ c :: d
+Located at line 3 column 29
 
 Execution terminated with an error: type error.

@@ -4,19 +4,22 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.List
 import qualified Data.Map                      as Map
+import           Data.Maybe
 import qualified Data.Set                      as Set
 
 import           Harper.Abs
 import           Harper.Abs.Pos
 import           Harper.Output
-import           Harper.TypeSystem.Core         ( TypeMetaData )
+import           Harper.TypeSystem.Core         ( TypeMetaData
+                                                , thisIdent
+                                                )
 import           Harper.Abs.Typed
 import           OutputM
 
 type Ptr = Int
 
 type OEnv = Map.Map Ident Ptr
-type TEnv = Map.Map UIdent ValueCtor
+type TEnv = Map.Map UIdent TCtor
 type ObjStore = Map.Map Ptr Object
 data Store = St { objStore  :: ObjStore, varSrc :: Int } deriving Show
 data Env = Env { objs :: OEnv,
@@ -36,15 +39,17 @@ data Object = Fun { params :: [Ident],
                     body :: Interpreter Object,
                     env :: OEnv }
             | Thunk (Interpreter Object)
-            | Value { _type :: ValueCtor, _data :: OEnv }
-            | Var   { ptr :: Maybe Ptr }
+            | Inst { _type :: TCtor, _data :: OEnv }
+            | Ref   { ref :: Ptr }
+            | Var   { var :: Maybe Ptr }
             | PInt Integer
             | PBool Bool
             | PStr String
             | PChar Char
             | PUnit
 
-data ValueCtor = ValueCtor { typeName :: UIdent, ctorName :: UIdent, membs :: OEnv }
+data TCtor = ValueCtor { vTypeName :: UIdent, ctorName :: UIdent, vMembs :: OEnv }
+           | RefCtor { rTypeName :: UIdent, rMembs :: OEnv }
 
 instance Show Object where
   show (PInt  n    ) = show n
@@ -54,12 +59,14 @@ instance Show Object where
   show (PChar c    ) = show c
   show PUnit         = "()"
   show (Thunk x    ) = "Thunk"
-  show (Var   o    ) = "Var " ++ show o
-  show (Value t d  ) = show t ++ " " ++ showData d
+  show (Var   l    ) = "Var " ++ show l
+  show (Inst t d   ) = show t ++ " " ++ showData d
+  show (Ref l      ) = "Ref " ++ show l
   show (Fun p b env) = "Fun " ++ show p ++ " " ++ show env
 
-instance Show ValueCtor where
+instance Show TCtor where
   showsPrec p (ValueCtor i c _) = showsPrt i . ("." ++) . showsPrt c
+  showsPrec p (RefCtor i _    ) = showsPrt i
 
 showData :: OEnv -> String
 showData d =
@@ -99,6 +106,16 @@ getObj i = do
   l <- asksObjs (Map.! i)
   getsObjs (Map.! l)
 
+getByPtr :: Ptr -> Interpreter Object
+getByPtr ptr = getsObjs (Map.! ptr)
+
+getThis :: Interpreter Object
+getThis = do
+  o  <- getObj thisIdent
+  o' <- evalObj o
+  let instPtr = ref $ fromJust o'
+  getByPtr instPtr
+
 inCurrentScope :: Interpreter a -> Interpreter (Interpreter a)
 inCurrentScope a = do
   env <- ask
@@ -116,15 +133,16 @@ inCurrentScope3 a = do
   return ((local (const env) .) . a)
 
 objType :: Object -> String
-objType (PInt  _)      = "Integer"
-objType (PBool _)      = "Bool"
-objType (PStr  _)      = "String"
-objType (PChar _)      = "Char"
-objType PUnit          = "Unit"
-objType Fun{}          = "Function"
-objType (Value t _   ) = show t
-objType (Var (Just o)) = "Variable"
-objType _              = "undefined"
+objType (PInt  _)  = "Integer"
+objType (PBool _)  = "Bool"
+objType (PStr  _)  = "String"
+objType (PChar _)  = "Char"
+objType PUnit      = "Unit"
+objType Fun{}      = "Function"
+objType (Inst t _) = show t
+objType (Var _   ) = "Variable"
+objType (Ref _   ) = "Reference"
+objType _          = "undefined"
 
 evalObj :: Object -> Interpreter (Maybe Object)
 evalObj o = case o of

@@ -5,6 +5,7 @@
 {-# OPTIONS -fno-warn-incomplete-patterns #-}
 {-# OPTIONS_GHC -w #-}
 module Harper.Lexer where
+
 import qualified Data.Bits
 import Data.Word (Word8)
 import Data.Char (ord)

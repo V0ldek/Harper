@@ -1,0 +1,6 @@
+Error: `this.data` cannot be accessed within a member of `Box a&`, which is a value type. Writable data access is only possible within members of ref types.
+During evaluation of:
+  this.data . a := a ;
+Located at line 8 column 9
+
+Execution terminated with an error: type error.

@@ -114,7 +114,7 @@ All other symbols are terminals.
   |  |  **|**  | //BoolLiteral// 
   | //MemberAccess// | -> | ``.`` //Ident// 
   | //[MemberAccess]// | -> | //MemberAccess// 
-  |  |  **|**  | //MemberAccess// ``.`` //[MemberAccess]// 
+  |  |  **|**  | //MemberAccess// //[MemberAccess]// 
   | //Expression13// | -> | ``this`` 
   |  |  **|**  | ``(`` //TupleExpression// ``)`` 
   |  |  **|**  | //Literal// 
@@ -192,6 +192,13 @@ All other symbols are terminals.
   |  |  **|**  | //Ident// ``/=`` //Expression// ``;`` 
   |  |  **|**  | //Ident// ``^=`` //Expression// ``;`` 
   |  |  **|**  | //Ident// ``@=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``+=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``-=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``*=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``/=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``:=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``^=`` //Expression// ``;`` 
+  |  |  **|**  | ``this.data`` ``.`` //Ident// ``@=`` //Expression// ``;`` 
   |  |  **|**  | //Statement2// 
   | //Statement// | -> | ``eval`` //Expression9// ``;`` 
   |  |  **|**  | //Statement1// 

@@ -1,0 +1,18 @@
+Error: the type `RefBox a` does not declare a constructor. A suitable `ctor` function is required.
+During evaluation of:
+  ref RefBox a = {
+    data = {
+        a :: a ;
+    }
+
+    get :: impure -> a ;
+    get = this.data . a ;
+
+    set :: a -> impure -> () ;
+    set a = {
+        this.data . a := a ;
+    } ;
+  }
+Located at line 1 column 1
+
+Execution terminated with an error: type error.

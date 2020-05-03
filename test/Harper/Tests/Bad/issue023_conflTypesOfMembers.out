@@ -1,4 +1,4 @@
-Error: cannot unify conflicting types: `(T a) -> (a -> Integer)`, `(T a) -> (a -> a)` resulting from declarations of the member `foo` of the type `T`.
+Error: cannot unify conflicting types: `T a -> a -> Integer`, `T a -> a -> a` resulting from declarations of the member `foo` of the type `T a`.
 Conflicting declarations:
  foo :: T a -> a -> a
 Located at line 3 column 9

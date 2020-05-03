@@ -1,0 +1,6 @@
+Error: `this.data` can only be accessed within a member of a ref type.
+During evaluation of:
+  this.data . a := 42 ;
+Located at line 3 column 5
+
+Execution terminated with an error: type error.

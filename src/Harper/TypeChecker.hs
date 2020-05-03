@@ -39,7 +39,7 @@ typeCheck p@(Prog a ds) = do
     globalEnv       <- declareGlobals
     (fts', userEnv) <- declares fts
     let env = Env $ Map.union userEnv globalEnv
-    fs'   <- mapM (local (const env) . annotate) fs
+    fs'   <- mapM (local (const env) . (\f -> clearBlkSt >> annotate f)) fs
     tds'  <- mapM (local (const env) . annotateTypeMembers) tds
     ctors <- gets tCtors
     return (toProg tds' fts' fs')
@@ -60,6 +60,9 @@ typeCheck p@(Prog a ds) = do
             )
             variants
         return $ ValTUDecl (annWith unitT a') (annWith unitT <$> sig) variants'
+    annotateTypeMembers (RefTDecl a' sig@(TSig _ tName _) body) = do
+        body' <- annotateTypeBody tName body
+        return $ RefTDecl (annWith unitT a') (annWith unitT <$> sig) body'
     annotateTypeBody tName (TBody a membs) = do
         membs' <- mapM (annotateMemb tName) membs
         return $ TBody (annWith unitT a) membs'
@@ -72,13 +75,17 @@ typeCheck p@(Prog a ds) = do
     annotateMemb tName (TMemFDecl a decl@(FDecl a' i params body)) = do
         t <- getType tName
         let t'      = bindAllVars t
-            params' = FParam Nothing thisIdent : params
-            membIs  = Map.keys (membs t')
+            params' = if i /= ctorIdent
+                then FParam Nothing thisIdent : params
+                else params
+            membIs = Map.keys (membs t')
         membsData <- mapM (getMember t') membIs
         let membTypes = map ((\(Obj t _) -> t) . fromJust) membsData
             membs     = zip membIs membTypes
         oenv  <- declareFromList membs
-        decl' <- localObjs (Map.union oenv) (annotate (FDecl a' i params' body))
+        thisL <- alloc (Obj t False)
+        decl' <- localObjs (Map.union $ Map.insert thisIdent thisL oenv)
+                           (annotate (FDecl a' i params' body))
         return $ TMemFDecl (annWith unitT a) decl'
 
 annotate :: FunDecl Pos -> TypeChecker (FunDecl (TypeMetaData Pos))
@@ -127,10 +134,7 @@ annotate d@(FDecl a i params body) = do
             ++ " and non empty param list "
             ++ show ps
             ++ ". Arity check fail."
-    curryType ps r = foldr combine r ps
-      where
-        combine SEType r@(FType SEType _) = r
-        combine p      r                  = FType p r
+    curryType ps r = foldr FType r ps
 
 annotateExpr :: Expression Pos -> TypeChecker (Expression (TypeMetaData Pos))
 
@@ -142,7 +146,7 @@ annotateExpr (LitExpr a l) =
 -- Value construction.
 
 annotateExpr e@(VCtorExpr a ctor fldAss) = do
-    tInst <- getFreshInst ctor
+    tInst <- getFreshValInst ctor
     case tInst of
         Just (t@(TypeCtor tName _ flds), t') -> do
             let assMap = Map.fromList [ (i, d) | d@(DataAss _ i _) <- fldAss ]
@@ -305,18 +309,15 @@ annotateExpr e@(TMembExpr _ _ []) =
         ++ show e
 annotateExpr e@(TMembExpr a tName (MembAcc a' i : as)) = do
     luType <- lookupType tName
-    case luType of
-        Just t@(VType _ _ _ _ membs) -> do
+    t      <- case luType of
+        Just t -> do
             luMemb <- getMember t i
             case luMemb of
-                Just (Obj t' _) -> do
-                    (t'', as') <- annotateAccess t' e as
-                    return $ TMembExpr (annWith t'' a)
-                                       tName
-                                       (MembAcc (annWith t'' a') i : as')
-                Nothing -> raise $ Error.invMembAccess t i e
-        Just t  -> raise $ Error.invMembAccess t i e
+                Just (Obj t' _) -> return t'
+                Nothing         -> raise $ Error.invMembAccess t i e
         Nothing -> raise $ Error.undeclaredType tName e
+    (t', as') <- annotateAccess t e as
+    return $ TMembExpr (annWith t' a) tName (MembAcc (annWith t' a') i : as')
 
 -- This identifier.
 
@@ -325,6 +326,25 @@ annotateExpr e@(ThisExpr a) = do
     case lookup of
         Just o  -> return $ ThisExpr (annWith (objType o) a)
         Nothing -> raise $ Error.thisOutsideOfMember e
+
+-- Data access.
+
+annotateExpr e@(DataExpr _ []) =
+    error
+        $ "Data access with an empty access list. Grammar should disallow this."
+        ++ show e
+annotateExpr e@(DataExpr a (MembAcc a' i : as)) = do
+    lookup <- lookupObj thisIdent
+    case lookup of
+        Just (Obj (RType _ _ _ _ flds) _) -> case Map.lookup i flds of
+            Just ptr -> do
+                o         <- gets ((Map.! ptr) . objData)
+                (t', as') <- annotateAccess (objType o) e as
+                return $ DataExpr (annWith t' a)
+                                  (MembAcc (annWith (objType o) a') i : as')
+            Nothing -> raise $ Error.undeclaredIdent i e
+        Just (Obj t@VType{} _) -> raise $ Error.dataAccessInValueType t e
+        Nothing                -> raise $ Error.dataAccessOutsideOfMemb e
 
 annotateExpr e =
     error $ "This type of expressions is not supported yet: " ++ show e
@@ -337,7 +357,7 @@ annotateAccess
     -> TypeChecker (Type, [MemberAccess (TypeMetaData Pos)])
 annotateAccess t ctx = foldM access (t, [])
   where
-    access (t@(VType tName _ _ _ membs), acc') (MembAcc a i) = do
+    access (t, acc') (MembAcc a i) = do
         luMemb <- getMember t i
         case luMemb of
             Just (Obj (FType p r) _) | canUnify p t ->
@@ -345,12 +365,11 @@ annotateAccess t ctx = foldM access (t, [])
             Just (Obj t' _) ->
                 error
                     $  "The type"
-                    ++ show tName
+                    ++ show (name t)
                     ++ " has a member "
                     ++ show i
                     ++ " whose first formal parameter is not of that type. This should be impossible."
             Nothing -> raise $ Error.invMembAccess t i ctx
-    access (t, _) (MembAcc _ i) = raise $ Error.invMembAccess t i ctx
 
 annotateLit :: Literal Pos -> Literal (TypeMetaData Pos)
 annotateLit l@IntLit{}  = annWith integerT <$> l
@@ -453,6 +472,9 @@ annotateAppExpr e a e1 e2 = do
                     sideeffect
                     return (annWith r a, e1', e2')
                 _ -> raise $ Error.sideeffectNotUnitLit e2 e
+            Nothing | p == ImpType && t2 == unitT -> case e2 of
+                LitExpr _ (UnitLit _) -> return (annWith r a, e1', e2')
+                _                     -> raise $ Error.sideeffectNotUnitLit e2 e
             Nothing -> raise $ Error.invType t2 p e2 e
         _ -> raise $ Error.invApp t1 e
 
@@ -483,7 +505,7 @@ annotatePat p@(PatDecl a decl) = do
     bindAllVarsInOEnv oenv
     return (PatDecl (annWith t' a) decl', oenv)
 annotatePat p@(PatCtor a i flds) = do
-    cInst <- getFreshInst i
+    cInst <- getFreshValInst i
     case cInst of
         Just (ctor@(TypeCtor tName _ _), t) -> do
             fldPats <- mapM (annotateFldPattern ctor) flds
@@ -662,6 +684,24 @@ analStmt s@(DivStmt a i e) = do
 analStmt s@(PowStmt a i e) = do
     e' <- analAss i e s
     return $ PowStmt (annWith unitT a) i e'
+analStmt s@(DataAssStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataAssStmt (annWith unitT a) i e'
+analStmt s@(DataAddStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataAddStmt (annWith unitT a) i e'
+analStmt s@(DataSubStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataSubStmt (annWith unitT a) i e'
+analStmt s@(DataMulStmt a i e) = do
+    e' <- analAss i e s
+    return $ DataMulStmt (annWith unitT a) i e'
+analStmt s@(DataDivStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataDivStmt (annWith unitT a) i e'
+analStmt s@(DataPowStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataPowStmt (annWith unitT a) i e'
 
 analStmt (EvalStmt a e) = do
     e' <- annotateExpr e
@@ -678,15 +718,41 @@ analAss
 analAss i e ctx = do
     lookup <- lookupObj i
     case lookup of
-        Just o | assignable o -> do
-            e' <- annotateExpr e
-            let t  = objType o
-                t' = typ e'
-            if canUnify t t'
-                then return e'
-                else raise $ Error.invType t' t e ctx
-        Just o  -> raise $ Error.assToValue i ctx
-        Nothing -> raise $ Error.undeclaredIdent i ctx
+        Just o | assignable o -> assignTo o e ctx
+        Just o                -> raise $ Error.assToValue i ctx
+        Nothing               -> raise $ Error.undeclaredIdent i ctx
+
+analDataAss
+    :: (Print p, Position p)
+    => Ident
+    -> Expression Pos
+    -> p
+    -> TypeChecker (Expression (TypeMetaData Pos))
+analDataAss i e ctx = do
+    lookup <- lookupObj thisIdent
+    case lookup of
+        Just (Obj (RType _ _ _ _ flds) _) -> case Map.lookup i flds of
+            Just ptr -> do
+                o <- gets ((Map.! ptr) . objData)
+                if assignable o
+                    then assignTo o e ctx
+                    else raise $ Error.assToValue i ctx
+            Nothing -> raise $ Error.undeclaredIdent i ctx
+        Just (Obj t@VType{} _) -> raise $ Error.dataAccessInValueType t ctx
+        Nothing                -> raise $ Error.dataAccessOutsideOfMemb ctx
+
+assignTo
+    :: (Print p, Position p)
+    => ObjData
+    -> Expression Pos
+    -> p
+    -> TypeChecker (Expression (TypeMetaData Pos))
+assignTo o e ctx = do
+    e' <- annotateExpr e
+    let t  = objType o
+        t' = typ e'
+    if canUnify t t' then return e' else raise $ Error.invType t' t e ctx
+
 
 annotateMatchStmtClause
     :: Type
@@ -736,6 +802,10 @@ funParams
 funParams ps st | hasSideeffects st = case mLast ps of
     Just (FParam (SEType, _) _) -> ps
     _                           -> ps ++ [FParam (SEType, Nothing) (Ident "()")]
+funParams ps _ | any (\(FParam (t, _) _) -> paramIsImpure t) ps =
+    case mLast ps of
+        Just (FParam (t, _) _) | t == ImpType || t == SEType -> ps
+        _ -> ps ++ [FParam (ImpType, Nothing) (Ident "()")]
 funParams ps _ = ps
 
 lamParams
@@ -745,6 +815,14 @@ lamParams
 lamParams ps st | hasSideeffects st = case mLast ps of
     Just (LamParam (SEType, _) _) -> ps
     _ -> ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
+lamParams ps _ | any (\(LamParam (t, _) _) -> paramIsImpure t) ps =
+    case mLast ps of
+        Just (LamParam (t, _) _) | t == ImpType || t == SEType -> ps
+        _ -> ps ++ [LamParam (ImpType, Nothing) (PatDisc (ImpType, Nothing))]
 lamParams ps _ = ps
 
-
+paramIsImpure :: Type -> Bool
+paramIsImpure RType{}                   = True
+paramIsImpure (FType ImpType r        ) = True
+paramIsImpure (FType p       r@FType{}) = paramIsImpure r
+paramIsImpure _                         = False
