@@ -254,12 +254,12 @@ conflCtorNames is ctxs = do
     typeErr
 
 conflMembNames
-    :: (Print p, Position p) => [Ident] -> UIdent -> [p] -> HarperOutput a
-conflMembNames is ctor ctxs = do
+    :: (Print p, Position p) => UIdent -> [Ident] -> [p] -> HarperOutput a
+conflMembNames ctor is ctxs = do
     outputConflDecls
         ( ("conflicting member declarations of `" ++)
         . showsPrtMany is
-        . ("` in the declaration of type variant `" ++)
+        . ("` in the declaration of `" ++)
         . showsPrt ctor
         . ("`." ++)
         )
@@ -274,11 +274,17 @@ conflTypeParams is ctx = do
         ctx
     typeErr
 
-conflFldNames :: (Print p, Position p) => [Ident] -> p -> HarperOutput a
-conflFldNames is ctx = do
-    outputErr
-        (("conflicting field names `" ++) . showsPrtMany is . ("`." ++))
-        ctx
+conflFldNames
+    :: (Print p, Position p) => UIdent -> [Ident] -> [p] -> HarperOutput a
+conflFldNames tName is ctxs = do
+    outputConflDecls
+        ( ("conflicting field names `" ++)
+        . showsPrtMany is
+        . ("` in the declaration of `" ++)
+        . showsPrt tName
+        . ("`." ++)
+        )
+        ctxs
     typeErr
 
 conflPatDecls :: (Print p, Position p) => [Ident] -> p -> HarperOutput a
@@ -432,20 +438,15 @@ conflFldSubsts t ctor ts ctx = do
     typeErr
 
 conflMembTypes
-    :: (Print p, Position p)
-    => UIdent
-    -> Ident
-    -> [Type]
-    -> [p]
-    -> HarperOutput a
-conflMembTypes tName i ts ctxs = do
+    :: (Print p, Position p) => Type -> Ident -> [Type] -> [p] -> HarperOutput a
+conflMembTypes t i ts ctxs = do
     outputConflDecls
         ( ("cannot unify conflicting types: `" ++)
         . showsMany ts
         . ("` resulting from declarations of the member `" ++)
         . showsPrt i
         . ("` of the type `" ++)
-        . showsPrt tName
+        . shows t
         . ("`." ++)
         )
         ctxs
@@ -475,13 +476,15 @@ undeclaredType i ctx = do
     outputErr (("undeclared type identifier `" ++) . showsPrt i . ("`." ++)) ctx
     typeErr
 
-invCtor :: (Print p, Position p) => Type -> UIdent -> p -> HarperOutput a
-invCtor t i ctx = do
+invCtorType :: (Print p, Position p) => Type -> Type -> p -> HarperOutput a
+invCtorType t ctor ctx = do
     outputErr
-        ( ("the type `" ++)
+        ( ("the constructor of the type `" ++)
         . shows t
-        . ("` does not have a constructor `" ++)
-        . showsPrt i
+        . ("` has an invalid type `" ++)
+        . shows ctor
+        . ("`. A constructor must have a type matching `* -> impure -> " ++)
+        . shows t
         . ("`." ++)
         )
         ctx
@@ -503,6 +506,35 @@ thisOutsideOfMember :: (Print p, Position p) => p -> HarperOutput a
 thisOutsideOfMember ctx = do
     outputErr
         ("cannot use the `this` identifier outside of a member function." ++)
+        ctx
+    typeErr
+
+refTypeNoCtor :: (Print p, Position p) => Type -> p -> HarperOutput a
+refTypeNoCtor t ctx = do
+    outputErr
+        (("the type `" ++)
+        . shows t
+        . ("` does not declare a constructor. A suitable `ctor` function is required." ++
+          )
+        )
+        ctx
+    typeErr
+
+dataAccessInValueType :: (Print p, Position p) => Type -> p -> HarperOutput a
+dataAccessInValueType t ctx = do
+    outputErr
+        (("`this.data` cannot be accessed within a member of `" ++)
+        . shows t
+        . ("`, which is a value type. Writable data access is only possible within members of ref types." ++
+          )
+        )
+        ctx
+    typeErr
+
+dataAccessOutsideOfMemb :: (Print p, Position p) => p -> HarperOutput a
+dataAccessOutsideOfMemb ctx = do
+    outputErr
+        ("`this.data` can only be accessed within a member of a ref type."++)
         ctx
     typeErr
 

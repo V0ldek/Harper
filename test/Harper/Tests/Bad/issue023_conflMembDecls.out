@@ -1,4 +1,4 @@
-Error: conflicting member declarations of `foo` in the declaration of type variant `A`.
+Error: conflicting member declarations of `foo` in the declaration of `A`.
 Conflicting declarations:
  foo :: a -> a
 Located at line 3 column 9

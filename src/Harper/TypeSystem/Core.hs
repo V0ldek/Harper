@@ -21,17 +21,33 @@ type TypeStore = Map.Map UIdent Type
 
 data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
 data BlockState = BlkSt { reachable :: Bool, rets :: [Type], hasSideeffects :: Bool  } deriving Show
-data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord)
+data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord, Show)
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 
-data Type = VType { name :: UIdent, params :: [Ident], args :: [Type], ctors :: Set.Set UIdent, membs :: OEnv }
+data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors :: Set.Set UIdent, vMembs :: OEnv }
+          | RType { rName :: UIdent, rParams :: [Ident], rArgs :: [Type], rMembs :: OEnv, rData :: OEnv }
           | FType { param :: Type, ret :: Type }
           | TypeVar Ident
           | TypeBound Ident
           | PType UIdent
+          | ImpType
           | SEType
           deriving (Eq, Ord)
+
+name :: Type -> UIdent
+name t@VType{} = vName t
+name t@RType{} = rName t
+
+args :: Type -> [Type]
+args t@VType{} = vArgs t
+args t@RType{} = rArgs t
+args t         = []
+
+membs :: Type -> OEnv
+membs t@VType{} = vMembs t
+membs t@RType{} = rMembs t
+membs t         = Map.empty
 
 data TypeCtor = TypeCtor { tname :: UIdent, ctor :: UIdent, flds :: Map.Map Ident ObjData } deriving (Eq, Ord)
 
@@ -39,19 +55,21 @@ type TypeChecker = ReaderT Env (StateT Store (Output ShowS))
 
 instance Show Type where
     showsPrec p (VType i _ []    _ _) = showsPrt i
-    showsPrec p (VType i _ targs _ _) = showParen
-        (p > 10)
-        (showsPrt i . (" " ++) . foldr
-            (.)
-            id
-            (intersperse (" " ++) (map (showsPrec 11) targs))
-        )
+    showsPrec p (VType i _ targs _ _) = showsPrt i . (" " ++) . foldr
+        (.)
+        id
+        (intersperse (" " ++) (map (showsPrec 11) targs))
+    showsPrec p (RType i _ targs _ _) = showsPrt i . (" " ++) . foldr
+        (.)
+        id
+        (intersperse (" " ++) (map (showsPrec 11) targs))
     showsPrec p (FType pt rt) =
-        showParen (p > 10) (showsPrec 11 pt . (" -> " ++) . showsPrec 11 rt)
+        showParen (p > 10) (showsPrec 11 pt . (" -> " ++) . showsPrec p rt)
     showsPrec p (TypeVar   i) = showsPrt i
     showsPrec p (TypeBound i) = showsPrt i . ("&" ++)
     showsPrec p (PType     i) = showsPrt i
     showsPrec p SEType        = ("sideeffect" ++)
+    showsPrec p ImpType       = ("impure" ++)
 
 instance Show TypeCtor where
     showsPrec p (TypeCtor i c _) = showsPrt i . ("." ++) . showsPrt c
@@ -94,6 +112,9 @@ getType i = getsTypes (Map.! i)
 
 loadTypes :: TypeStore -> TypeChecker ()
 loadTypes t = modify (\st -> st { types = Map.union t (types st) })
+
+ctorIdent :: Ident
+ctorIdent = Ident "ctor"
 
 -- Unspeakable name
 thisIdent :: Ident

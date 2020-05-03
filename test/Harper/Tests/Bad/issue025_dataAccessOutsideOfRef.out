@@ -1,6 +1,6 @@
-Error: type `RefBox` does not implement the function `a`.
+Error: type `RefBox Integer` has no member `a`.
 During evaluation of:
   b . a
-Located at line 24 column 12
+Located at line 25 column 12
 
 Execution terminated with an error: type error.

@@ -2,7 +2,21 @@
 -- "Typing Haskell in Haskell", Mark P. Jones, https://web.cecs.pdx.edu/~mpj/thih/
 -- The code is much simpler since Harper doesn't do type reconstruction
 -- and has no concept of kinds and all type constructors are always fully applied.
-module Harper.TypeSystem.Typing where
+module Harper.TypeSystem.Typing
+    ( arity
+    , bindVars
+    , bindAllVars
+    , bindAllVarsInOEnv
+    , getFreshValInst
+    , getFreshRefInst
+    , getMember
+    , Subst
+    , Types(..)
+    , unify
+    , unifys
+    , canUnify
+    )
+where
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
@@ -18,9 +32,10 @@ import           Harper.TypeSystem.Core
 import           Harper.Utility
 
 arity :: Type -> Int
-arity (FType SEType r) = arity r
-arity (FType _      r) = 1 + arity r
-arity _                = 0
+arity (FType SEType  r) = arity r
+arity (FType ImpType r) = arity r
+arity (FType _       r) = 1 + arity r
+arity _                 = 0
 
 bindVars :: [Ident] -> Type -> Type
 bindVars vars = apply (Map.fromList (map (\i -> (i, TypeBound i)) vars))
@@ -34,26 +49,45 @@ bindAllVarsInOEnv oenv = forM_ (Map.elems oenv) bindOne
     bindOne ptr = modifyObjData
         (Map.adjust (\o -> o { objType = bindAllVars (objType o) }) ptr)
 
-getFreshInst :: UIdent -> TypeChecker (Maybe (TypeCtor, Type))
-getFreshInst i = do
+getFreshValInst :: UIdent -> TypeChecker (Maybe (TypeCtor, Type))
+getFreshValInst i = do
     luCtor <- getsCtors (Map.lookup i)
     case luCtor of
         Just ctor -> do
-            t <- getType (tname ctor)
-            let n = length (params t)
-            fresh <- newvars n
-            let subst = Map.fromList $ zip (params t) (map TypeVar fresh)
+            t     <- getType (tname ctor)
+            subst <- getFreshTypeSubst t
             return $ Just (apply subst ctor, apply subst t)
         Nothing -> return Nothing
 
+getFreshRefInst :: UIdent -> TypeChecker (Maybe Type)
+getFreshRefInst i = do
+    lookup <- getsTypes (Map.lookup i)
+    case lookup of
+        Just t -> do
+            subst <- getFreshTypeSubst t
+            return $ Just (apply subst t)
+        Nothing -> return Nothing
+
+getFreshTypeSubst :: Type -> TypeChecker Subst
+getFreshTypeSubst t = do
+    let n = length (tVars t)
+    fresh <- newvars n
+    let subst = Map.fromList $ zip (tVars t) (map TypeVar fresh)
+    return subst
+
 getMember :: Type -> Ident -> TypeChecker (Maybe ObjData)
-getMember (VType t args params _ membs) i = case Map.lookup i membs of
-    Just ptr -> do
-        o <- gets ((Map.! ptr) . objData)
-        let subst = Map.fromList $ zip args params
-        return $ Just o { objType = apply subst (objType o) }
-    Nothing -> return Nothing
-getMember _ _ = return Nothing
+getMember t i = case t of
+    VType _ args params _     membs -> getMember' args params membs
+    RType _ args params membs _     -> getMember' args params membs
+    _                               -> return Nothing
+  where
+    getMember' :: [Ident] -> [Type] -> OEnv -> TypeChecker (Maybe ObjData)
+    getMember' args params membs = case Map.lookup i membs of
+        Just ptr -> do
+            o <- gets ((Map.! ptr) . objData)
+            let subst = Map.fromList $ zip args params
+            return $ Just o { objType = apply subst (objType o) }
+        Nothing -> return Nothing
 
 type Subst = Map.Map Ident Type
 
@@ -63,12 +97,14 @@ class Types t where
 
 instance Types Type where
     apply s v@(TypeVar i         ) = fromMaybe v (Map.lookup i s)
-    apply s v@(VType _ _ args _ _) = v { args = apply s args }
+    apply s v@(VType _ _ args _ _) = v { vArgs = apply s args }
+    apply s r@(RType _ _ args _ _) = r { rArgs = apply s args }
     apply s (  FType p r         ) = FType (apply s p) (apply s r)
     apply s t                      = t
 
     tVars (TypeVar i         ) = [i]
     tVars (VType _ _ args _ _) = tVars args
+    tVars (RType _ _ args _ _) = tVars args
     tVars (FType p r         ) = tVars p `union` tVars r
     tVars t                    = []
 
@@ -91,9 +127,15 @@ catSubst s1 s2 = Map.union (Map.map (apply s2) s1) s2
 
 -- Unify is left-biased.
 unify :: Type -> Type -> Maybe Subst
-unify t1 t2 = case unify' t1 t2 of
-    Nothing -> unify' t1 (FType SEType t2)
-    s       -> s
+unify t1 t2 = fromMaybe
+    Nothing
+    (find
+        isJust
+        [ unify' t1 t2
+        , unify' t1 (FType SEType t2)
+        , unify' t1 (FType ImpType t2)
+        ]
+    )
   where
     unify' (TypeVar i)   t2            = return $ Map.fromList [(i, t2)]
     unify' t1            (TypeVar i  ) = return $ Map.fromList [(i, t1)]
@@ -101,16 +143,17 @@ unify t1 t2 = case unify' t1 t2 of
         s1 <- unify p1 p2
         s2 <- unify (apply s1 r1) (apply s1 r2)
         return $ catSubst s1 s2
-    unify' (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 = foldM
-        accSubst
-        Map.empty
-        (zip ps1 ps2)
-      where
-        accSubst s (p1, p2) = do
-            s' <- unify (apply s p1) (apply s p2)
-            return $ catSubst s s'
+    unify' (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 =
+        foldM accSubst Map.empty (zip ps1 ps2)
+    unify' (RType i1 _ ps1 _ _) (RType i2 _ ps2 _ _) | i1 == i2 =
+        foldM accSubst Map.empty (zip ps1 ps2)
     unify' t1 t2 | t1 == t2 = return Map.empty
     unify' t1 t2            = Nothing
+
+accSubst :: Subst -> (Type, Type) -> Maybe Subst
+accSubst s (p1, p2) = do
+    s' <- unify (apply s p1) (apply s p2)
+    return $ catSubst s s'
 
 unifys :: [Type] -> Maybe Subst
 unifys = accSubst Map.empty
