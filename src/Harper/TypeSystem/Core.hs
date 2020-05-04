@@ -28,6 +28,7 @@ newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors :: Set.Set UIdent, vMembs :: OEnv }
           | RType { rName :: UIdent, rParams :: [Ident], rArgs :: [Type], rMembs :: OEnv, rData :: OEnv }
           | FType { param :: Type, ret :: Type }
+          | TupType { tupElems :: [Type] }
           | TypeVar Ident
           | TypeBound Ident
           | PType UIdent
@@ -65,11 +66,14 @@ instance Show Type where
         (intersperse (" " ++) (map (showsPrec 11) targs))
     showsPrec p (FType pt rt) =
         showParen (p > 10) (showsPrec 11 pt . (" -> " ++) . showsPrec p rt)
-    showsPrec p (TypeVar   i) = showsPrt i
-    showsPrec p (TypeBound i) = showsPrt i . ("&" ++)
-    showsPrec p (PType     i) = showsPrt i
-    showsPrec p SEType        = ("sideeffect" ++)
-    showsPrec p ImpType       = ("impure" ++)
+    showsPrec p (TypeVar   i    ) = showsPrt i
+    showsPrec p (TypeBound i    ) = showsPrt i . ("&" ++)
+    showsPrec p (PType     i    ) = showsPrt i
+    showsPrec p (TupType   elems) = showParen
+        True
+        (foldr (.) id (intersperse (", " ++) (map (showsPrec 1) elems)))
+    showsPrec p SEType  = ("sideeffect" ++)
+    showsPrec p ImpType = ("impure" ++)
 
 instance Show TypeCtor where
     showsPrec p (TypeCtor i c _) = showsPrt i . ("." ++) . showsPrt c

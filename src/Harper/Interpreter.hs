@@ -15,6 +15,7 @@ import           Data.List
 
 import           Harper.Abs
 import           Harper.Abs.Pos
+import           Harper.Abs.Tuple
 import           Harper.Interpreter.Alloc
 import           Harper.Printer
 import           Harper.Interpreter.Conditionals
@@ -90,6 +91,13 @@ eval e@(VCtorExpr _ ctor flds           ) = do
     fldAssToData (DataAss _ i e) = do
         (ptr, _) <- makeThunk e eval
         return (i, ptr)
+
+-- Tuple.
+
+eval (TupExpr _ tup) = do
+    let es = tupToList tup
+    os <- mapM eval es
+    return $ Tup os
 
 -- Object access.
 
@@ -530,10 +538,6 @@ evalCmpOp e = do
                 ++ " "
                 ++ show ts
 
-evalThunk :: Object -> Interpreter Object
-evalThunk (Thunk x) = x
-evalThunk o         = return o
-
 -- Continuation passing style - kMatch is called when object matches the pattern, kElse otherwise.
 patMatch
     :: Pattern Meta
@@ -545,35 +549,51 @@ patMatch PatDisc{}  _ kMatch _     = kMatch
 patMatch p@PatLit{} e kMatch kElse = do
     o <- eval e
     patMatch' p o kMatch kElse
+patMatch p@PatTup{} e kMatch kElse = do
+    o <- eval e
+    patMatch' p o kMatch kElse
 patMatch (PatDecl _ decl) e kMatch _ = do
     env <- declLocal decl e eval
     localObjs (const env) kMatch
 patMatch p@PatCtor{} e kMatch kElse = do
     o <- eval e
     patMatch' p o kMatch kElse
+patMatch p _ _ _ =
+    error $ "Pattern matching this type of patterns is unsupported: " ++ show p
 
 patMatch'
     :: Pattern Meta -> Object -> Interpreter a -> Interpreter a -> Interpreter a
 patMatch' PatDisc{}      _ kMatch _     = kMatch
 patMatch' (PatLit _ lit) o kMatch kElse = do
-    o' <- evalThunk o
+    o' <- evalObj o
     case (lit, o') of
-        (IntLit _ n1, PInt n2) | n1 == n2   -> kMatch
-        (BoolLit _ (BTrue  _), PBool True ) -> kMatch
-        (BoolLit _ (BFalse _), PBool False) -> kMatch
-        (CharLit _ c1, PChar c2) | c1 == c2 -> kMatch
-        (StrLit _ s1, PStr s2) | s1 == s2   -> kMatch
-        (UnitLit _, PUnit)                  -> kMatch
-        _                                   -> kElse
+        (IntLit _ n1, Just (PInt n2)) | n1 == n2   -> kMatch
+        (BoolLit _ (BTrue  _), Just (PBool True) ) -> kMatch
+        (BoolLit _ (BFalse _), Just (PBool False)) -> kMatch
+        (CharLit _ c1, Just (PChar c2)) | c1 == c2 -> kMatch
+        (StrLit _ s1, Just (PStr s2)) | s1 == s2   -> kMatch
+        (UnitLit _, Just PUnit)                    -> kMatch
+        _                                          -> kElse
+patMatch' (PatTup _ tup) o kMatch kElse = do
+    let pats = patTupToList tup
+    o' <- evalObj o
+    case o' of
+        Just (Tup os) | length os == length pats ->
+            patMatchSeq pats os kMatch kElse
+        _ -> kElse
+  where
+    patMatchSeq [] [] kMatch _ = kMatch
+    patMatchSeq (pat : pats) (o : os) kMatch kElse =
+        patMatch' pat o (patMatchSeq pats os kMatch kElse) kElse
 patMatch' (PatDecl _ decl) o kMatch _ = do
     l   <- alloc o
     env <- declLocal' decl l
     localObjs (const env) kMatch
 patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
-    o' <- evalThunk o
+    o' <- evalObj o
     case o' of
-        v@(Inst t _) | ctorName t == c -> matchFlds v flds kMatch kElse
-        _                              -> kElse
+        Just v@(Inst t _) | ctorName t == c -> matchFlds v flds kMatch kElse
+        _ -> kElse
   where
     matchFlds v@(Inst t d) (PatFld _ i p : flds) kMatch kElse =
         case Map.lookup i d of
@@ -594,8 +614,12 @@ printObj p@PBool{} = return $ shows p
 printObj p@PStr{}  = return $ shows p
 printObj p@PChar{} = return $ shows p
 printObj PUnit     = return $ shows PUnit
-printObj e@Thunk{} = do
-    o <- evalThunk e
+printObj (Tup os)  = do
+    ss <- mapM printObj os
+    let s = foldr (.) id (intersperse (", " ++) ss)
+    return $ showParen True s
+printObj (Thunk t) = do
+    o <- t
     printObj o
 printObj (Var (Just ptr)) = do
     o <- getsObjs (Map.! ptr)

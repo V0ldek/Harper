@@ -42,6 +42,7 @@ data Object = Fun { params :: [Ident],
             | Inst { _type :: TCtor, _data :: OEnv }
             | Ref   { ref :: Ptr }
             | Var   { var :: Maybe Ptr }
+            | Tup { tupElems :: [Object] }
             | PInt Integer
             | PBool Bool
             | PStr String

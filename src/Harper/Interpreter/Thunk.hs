@@ -8,6 +8,7 @@ import           Control.Monad.State
 import qualified Data.Map                      as Map
 
 import           Harper.Abs
+import           Harper.Abs.Tuple
 import           Harper.Abs.Typed
 import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
@@ -52,6 +53,20 @@ thunkPrep e@(VCtorExpr a ctor flds) eval = do
     fwdDecl (var, DataAss a i e) = do
         (ptr, _) <- makeThunk e eval
         return (DataAss a i (ObjExpr a var), ptr)
+
+-- Tuples.
+
+thunkPrep e@(TupExpr a tup) eval = do
+    let es = tupToList tup
+    eThunks <- mapM (`makeThunk` eval) es
+    let ls = map fst eThunks
+        n  = length ls
+    vars <- newvars n
+    let vsls = zip vars ls
+        vses = zip vars es
+        es'  = map (\(v, e) -> ObjExpr (meta e) v) vses
+        tup' = tupFromList meta es'
+    return $ localObjs (Map.union $ Map.fromList vsls) (eval $ TupExpr a tup')
 
 -- Object access.
 
