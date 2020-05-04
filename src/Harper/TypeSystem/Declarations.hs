@@ -18,6 +18,7 @@ import           Data.Traversable
 
 import           Harper.Abs
 import           Harper.Abs.Pos
+import           Harper.Abs.Tuple
 import           Harper.Abs.Typed
 import qualified Harper.Error                  as Error
 import           Harper.Output
@@ -319,6 +320,9 @@ parseType e@(TApp _ u es) = do
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e
         Nothing         -> raise $ Error.undeclaredType u e
+parseType (TTup _ tup) = do
+    ts <- mapM parseType $ tTupToList tup
+    return $ TupType ts
 parseType (TPur _ (TSideE  _)) = return SEType
 parseType (TPur _ (TImpure _)) = return ImpType
 

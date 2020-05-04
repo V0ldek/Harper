@@ -100,12 +100,14 @@ instance Types Type where
     apply s v@(VType _ _ args _ _) = v { vArgs = apply s args }
     apply s r@(RType _ _ args _ _) = r { rArgs = apply s args }
     apply s (  FType p r         ) = FType (apply s p) (apply s r)
+    apply s (  TupType ts        ) = TupType (map (apply s) ts)
     apply s t                      = t
 
     tVars (TypeVar i         ) = [i]
     tVars (VType _ _ args _ _) = tVars args
     tVars (RType _ _ args _ _) = tVars args
     tVars (FType p r         ) = tVars p `union` tVars r
+    tVars (TupType ts        ) = concatMap tVars ts
     tVars t                    = []
 
 instance Types ObjData where
@@ -147,9 +149,10 @@ unify t1 t2 = fromMaybe
         foldM accSubst Map.empty (zip ps1 ps2)
     unify' (RType i1 _ ps1 _ _) (RType i2 _ ps2 _ _) | i1 == i2 =
         foldM accSubst Map.empty (zip ps1 ps2)
-    unify' SEType ImpType   = return Map.empty
-    unify' t1 t2 | t1 == t2 = return Map.empty
-    unify' t1 t2            = Nothing
+    unify' (TupType ts1) (TupType ts2) = foldM accSubst Map.empty (zip ts1 ts2)
+    unify' SEType        ImpType       = return Map.empty
+    unify' t1 t2 | t1 == t2            = return Map.empty
+    unify' t1 t2                       = Nothing
 
 accSubst :: Subst -> (Type, Type) -> Maybe Subst
 accSubst s (p1, p2) = do

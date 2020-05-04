@@ -1,0 +1,6 @@
+(0, (42, true))
+(42, true)
+(42, (0, false))
+(42, true)
+
+Execution ended with value: ()

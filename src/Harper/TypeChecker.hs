@@ -4,12 +4,14 @@ module Harper.TypeChecker
 where
 import           Control.Monad.Reader
 import           Control.Monad.State
+import           Data.List
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 import           Data.Maybe
 
 import           Harper.Abs
 import           Harper.Abs.Pos
+import           Harper.Abs.Tuple
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.Printer                 ( Print(..) )
@@ -178,6 +180,15 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
                     Just subst -> return (DataAss (annWith t a) i e'', subst)
                     Nothing    -> raise $ Error.invType t' t e' e
         Nothing -> raise $ Error.undeclaredCtor ctor e
+
+-- Tuples.
+
+annotateExpr e@(TupExpr a tup) = do
+    let es = tupToList tup
+    es' <- mapM annotateExpr es
+    let t    = TupType (map typ es')
+        tup' = tupFromList (\e -> (typ e, pos e)) es'
+    return $ TupExpr (annWith t a) tup'
 
 -- Object access.
 
@@ -504,6 +515,14 @@ annotatePat p@(PatDecl a decl) = do
     let t' = bindAllVars (typ decl')
     bindAllVarsInOEnv oenv
     return (PatDecl (annWith t' a) decl', oenv)
+annotatePat p@(PatTup a tup) = do
+    let pats = patTupToList tup
+    patsResults <- mapM annotatePat pats
+    let (pats', oenvs) = unzip patsResults
+        oenv           = foldl' Map.union Map.empty oenvs
+        t              = TupType (map typ pats')
+        tup'           = patTupFromList (\p -> (typ p, pos p)) pats'
+    return (PatTup (annWith t a) tup', oenv)
 annotatePat p@(PatCtor a i flds) = do
     cInst <- getFreshValInst i
     case cInst of
@@ -541,6 +560,8 @@ annotatePat p@(PatCtor a i flds) = do
                             )
                     Nothing -> raise $ Error.patInvType t'' t' e
             Nothing -> raise $ Error.invFldAcc ctor i p
+annotatePat p =
+    error $ "This type of patterns is not supported yet. " ++ show p
 
 annotateBody
     :: FunBody Pos -> TypeChecker (FunBody (TypeMetaData Pos), BlockState)
