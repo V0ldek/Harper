@@ -176,6 +176,7 @@ All other symbols are terminals.
   |  |  **|**  | ``continue`` ``;`` 
   |  |  **|**  | ``break`` ``;`` 
   |  |  **|**  | ``yield`` //Expression// ``;`` 
+  |  |  **|**  | ``yield`` ``return`` ``;`` 
   |  |  **|**  | //Statement5// 
   | //Statement3// | -> | ``match`` //Expression// ``{`` //[MatchStatementClause]// ``}`` 
   |  |  **|**  | ``while`` //Expression// //Statement5// 

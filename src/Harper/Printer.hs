@@ -147,6 +147,8 @@ instance Print (FunBody a) where
   prt i e = case e of
     FExprBody _ expression -> prPrec i 0 (concatD [prt 0 expression])
     FStmtBody _ statement -> prPrec i 0 (concatD [prt 5 statement])
+    FVIterBody _ statement -> prPrec i 0 (concatD [prt 5 statement])
+    FRIterBody _ statement -> prPrec i 0 (concatD [prt 5 statement])
 
 instance Print (BoolLiteral a) where
   prt i e = case e of
@@ -225,6 +227,7 @@ instance Print (Statement a) where
     CntStmt _ -> prPrec i 4 (concatD [doc (showString "continue"), doc (showString ";")])
     BrkStmt _ -> prPrec i 4 (concatD [doc (showString "break"), doc (showString ";")])
     YieldStmt _ expression -> prPrec i 4 (concatD [doc (showString "yield"), prt 0 expression, doc (showString ";")])
+    YieldRetStmt _ -> prPrec i 4 (concatD [doc (showString "yield"), doc (showString "return"), doc (showString ";")])
     MatchStmt _ expression matchstatementclauses -> prPrec i 3 (concatD [doc (showString "match"), prt 0 expression, doc (showString "{"), prt 0 matchstatementclauses, doc (showString "}")])
     WhileStmt _ expression statement -> prPrec i 3 (concatD [doc (showString "while"), prt 0 expression, prt 5 statement])
     ForInStmt _ pattern expression statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 expression, prt 5 statement])

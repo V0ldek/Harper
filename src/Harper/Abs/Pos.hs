@@ -56,8 +56,10 @@ instance (Position a) => Position (LambdaParam a) where
     pos (LamParam a _) = pos a
 
 instance (Position a) => Position (FunBody a) where
-    pos (FExprBody a _) = pos a
-    pos (FStmtBody a _) = pos a
+    pos (FExprBody  a _) = pos a
+    pos (FStmtBody  a _) = pos a
+    pos (FVIterBody a _) = pos a
+    pos (FRIterBody a _) = pos a
 
 instance (Position a) => Position (BoolLiteral a) where
     pos (BTrue  a) = pos a
@@ -124,6 +126,7 @@ instance (Position a) => Position (Statement a) where
     pos (CntStmt a            ) = pos a
     pos (BrkStmt a            ) = pos a
     pos (YieldStmt a _        ) = pos a
+    pos (YieldRetStmt a       ) = pos a
     pos (MatchStmt a _ _      ) = pos a
     pos (WhileStmt a _ _      ) = pos a
     pos (ForInStmt a _ _ _    ) = pos a

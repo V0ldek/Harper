@@ -1,0 +1,17 @@
+Error: a `return` statement cannot be used in an iterator function.
+During evaluation of:
+{
+  var (i :: Integer)= 0 ;
+  while i < n {
+    yield i ;
+
+    if i == 10 {
+      return ;
+    }
+
+    i += 1 ;
+  }
+}
+Located at line 2 column 14
+
+Execution terminated with an error: type error.

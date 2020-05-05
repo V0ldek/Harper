@@ -1,0 +1,3 @@
+Error: iterator's `current` function called before `next` or the sequence had no elements.
+
+Execution terminated with an error: runtime error.

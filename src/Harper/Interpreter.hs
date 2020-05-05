@@ -6,7 +6,6 @@ module Harper.Interpreter
 where
 import           Control.Monad
 import           Control.Monad.Reader
-import           Control.Monad.Writer
 import           Control.Monad.State
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
@@ -21,6 +20,7 @@ import           Harper.Printer
 import           Harper.Interpreter.Conditionals
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Declarations
+import           Harper.Interpreter.Iterator
 import           Harper.Expressions
 import           Harper.Interpreter.Thunk
 import qualified Harper.Error                  as Error
@@ -43,9 +43,9 @@ interpret (Prog _ ds) = do
     let fds = [ fd | TopLvlFDecl _ fd <- ds ]
     let tds = [ td | TopLvlTDecl _ td <- ds ]
     globals <- nativeObjs
-    userEnv <- localObjs (const globals) (funDecls fds call)
+    userEnv <- localObjs (const globals) (funDecls fds call exec)
     let oenv = Map.union userEnv globals
-    tenv <- localObjs (const oenv) (typeDecls call tds)
+    tenv <- localObjs (const oenv) (typeDecls call exec tds)
     let env = Env oenv tenv
     o <- local (const env) runMain
     printObj o
@@ -59,10 +59,6 @@ runMain = do
         --Just (Thunk e env _) ->
         Just _                           -> raise Error.invMainType
         Nothing                          -> raise Error.undeclaredMain
-
-fBodyToStmt :: FunBody Meta -> Statement Meta
-fBodyToStmt (FStmtBody _ s) = s
-fBodyToStmt (FExprBody a e) = RetExprStmt a e
 
 eval :: Expression Meta -> Interpreter Object
 
@@ -128,19 +124,24 @@ eval (SeqExpr _ e1 e2) = do
 
 -- Lambda expressions.
 
-eval (LamExpr a params body) = do
+eval e@(LamExpr a params body) = do
     env <- asks objs
     let n = length params
     ps <- newvars n
-    let pats  = [ p | LamParam _ p <- params ]
-        body' = genMatchChain (zip ps pats) (fBodyToStmt body)
-    return $ Fun ps (call body') env
+    let body' = case body of
+            FExprBody  a e -> call $ RetExprStmt a e
+            FStmtBody  _ s -> call s
+            FVIterBody _ s -> iteratorBody s exec
+            FRIterBody _ s -> refIteratorBody s exec
+        pats = [ p | LamParam _ p <- params ]
+    return $ Fun ps (matchAll (zip ps pats) body') env
   where
-    genMatchChain ((p, pat) : xs) body = MatchStmt
-        a
+    matchAll ((p, pat) : ps) body = patMatch
+        pat
         (ObjExpr a p)
-        [MatchStmtClause a pat (genMatchChain xs body)]
-    genMatchChain [] body = body
+        (matchAll ps body)
+        (raise $ Error.nonExhPatMatch e)
+    matchAll [] body = body
 
 -- Match expressions.
 
@@ -348,11 +349,7 @@ call s = exec s return f where f = return PUnit
 -- Since statements can only be executed in a body of a function, they take at least two continuations:
 -- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
 -- the place of call. Using k continues the execution to the next statement.
-exec
-    :: Statement Meta
-    -> (Object -> Interpreter a)
-    -> Interpreter a
-    -> Interpreter a
+exec :: ContExec
 exec (EmptyStmt _   ) _    k = k
 exec (StmtBlock a ss) kRet k = do
     k'    <- inCurrentScope k
@@ -367,8 +364,13 @@ exec (StmtBlock a ss) kRet k = do
 exec (RetExprStmt _ e) kRet _ = do
     o <- eval e
     kRet o
-exec (RetStmt _   ) kRet _ = kRet PUnit
-exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
+exec (RetStmt _    ) kRet _ = kRet PUnit
+exec (YieldStmt _ e) kRet k = do
+    o  <- eval e
+    k' <- inCurrentScope k
+    kRet (Tup [o, Thunk k'])
+exec (YieldRetStmt _) kRet _ = kRet PUnit
+exec (CondStmt _ c  ) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
   where
     -- Executes a linear conditional. 
     -- Looks for the first if with a predicate evaluating to true and executes that branch.

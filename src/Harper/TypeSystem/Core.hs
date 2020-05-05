@@ -20,7 +20,7 @@ type CtorStore = Map.Map UIdent TypeCtor
 type TypeStore = Map.Map UIdent Type
 
 data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
-data BlockState = BlkSt { reachable :: Bool, rets :: [Type], hasSideeffects :: Bool  } deriving Show
+data BlockState = BlkSt { reachable :: Bool, rets :: [Type], yields :: [Type], isImpure :: Bool, hasSideeffects :: Bool  } deriving Show
 data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord, Show)
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)

@@ -416,6 +416,16 @@ conflRetTypes ts ctx = do
         ctx
     typeErr
 
+conflYieldTypes :: (Print p, Position p) => [Type] -> p -> HarperOutput a
+conflYieldTypes ts ctx = do
+    outputErr
+        ( ("cannot unify conflicting yield types of a function: `" ++)
+        . showsMany ts
+        . ("`." ++)
+        )
+        ctx
+    typeErr
+
 conflFldSubsts
     :: (Print p, Position p)
     => Type
@@ -483,7 +493,7 @@ invCtorType t ctor ctx = do
         . shows t
         . ("` has an invalid type `" ++)
         . shows ctor
-        . ("`. A constructor must have a type matching `* -> " ++)
+        . ("`. The constructor must return an instance of `" ++)
         . shows t
         . ("`." ++)
         )
@@ -534,9 +544,23 @@ dataAccessInValueType t ctx = do
 dataAccessOutsideOfMemb :: (Print p, Position p) => p -> HarperOutput a
 dataAccessOutsideOfMemb ctx = do
     outputErr
-        ("`this.data` can only be accessed within a member of a ref type."++)
+        ("`this.data` can only be accessed within a member of a ref type." ++)
         ctx
     typeErr
+
+mixingYieldAndReturn :: (Print p, Position p) => p -> HarperOutput a
+mixingYieldAndReturn ctx = do
+    outputErr
+        ("a `return` statement cannot be used in an iterator function." ++)
+        ctx
+    typeErr
+
+iterCurrNoElem :: HarperOutput a
+iterCurrNoElem = do
+    outputErrInternal
+        ("iterator's `current` function called before `next` or the sequence had no elements." ++
+        )
+    runtimeErr
 
 showsMany :: (Show a) => [a] -> ShowS
 showsMany xs = foldl' (.) id $ intersperse ("`, `" ++) $ map shows xs

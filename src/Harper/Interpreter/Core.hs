@@ -29,6 +29,11 @@ type Interpreter = ReaderT Env (StateT Store (Output ShowS))
 
 type Eval = Expression Meta -> Interpreter Object
 type Exec = Statement Meta -> Interpreter Object
+type ContExec
+  =  Statement Meta
+  -> (Object -> Interpreter Object)
+  -> Interpreter Object
+  -> Interpreter Object
 
 type Meta = TypeMetaData Pos
 
@@ -114,8 +119,9 @@ getThis :: Interpreter Object
 getThis = do
   o  <- getObj thisIdent
   o' <- evalObj o
-  let instPtr = ref $ fromJust o'
-  getByPtr instPtr
+  case fromJust o' of
+    Ref ptr -> getByPtr ptr
+    o       -> return o
 
 inCurrentScope :: Interpreter a -> Interpreter (Interpreter a)
 inCurrentScope a = do

@@ -29,14 +29,14 @@ import           Harper.Utility
 runTypeChecker :: Program Pos -> HarperOutput (Program (TypeMetaData Pos))
 runTypeChecker tree = evalStateT
     (runReaderT (typeCheck tree) (Env Map.empty))
-    (St (BlkSt True [] False) 0 Map.empty Map.empty Map.empty)
+    (St initialBlkSt 0 Map.empty Map.empty Map.empty)
 
 typeCheck :: Program Pos -> TypeChecker (Program (TypeMetaData Pos))
 typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
-    loadTypes globalTypes
+    loadGlobalTypes
     declTypes tds
     globalEnv       <- declareGlobals
     (fts', userEnv) <- declares fts
@@ -100,23 +100,26 @@ annotate d@(FDecl a i params body) = do
                 if n1 < n2
                     then raise $ Error.tooManyParams i t n1 n2 d
                     else do
-                        let t'@(FType p r) = bindAllVars t
+                        let t' = bindAllVars t
+                            initSt =
+                                initialBlkSt { isImpure = isFunImpure t' n2 }
                         (params', tBody) <- uncurryType t' params
                         paramEnv         <- declareFromList
                             [ (i, typ p) | p@(FParam _ i) <- params' ]
-                        (body', bodySt) <- localObjs (Map.union paramEnv)
-                                                     (annotateBody body)
-                        let params'' = funParams params' bodySt
+                        (body', bodySt) <- localObjs
+                            (Map.union paramEnv)
+                            (annotateBody body initSt)
+                        let params'' = addImpurityParam bodySt params'
                             t''      = curryType (map typ params'') (typ body')
                         if canUnify t' t''
                             then return
                                 $ FDecl (annWith unitT a) i params'' body'
                             else raise $ Error.funInvType i t t'' d
         Just o | null params -> do
-            (body', bodySt) <- annotateBody body
+            (body', bodySt) <- annotateBody body initialBlkSt
             let t      = objType o
                 t'     = bindAllVars t
-                params = funParams [] bodySt
+                params = addImpurityParam bodySt []
                 t''    = curryType (map typ params) (typ body')
             if canUnify t' t''
                 then return $ FDecl (annWith unitT a) i params body'
@@ -136,7 +139,10 @@ annotate d@(FDecl a i params body) = do
             ++ " and non empty param list "
             ++ show ps
             ++ ". Arity check fail."
-    curryType ps r = foldr FType r ps
+    addImpurityParam st ps = case (hasSideeffects st, isImpure st) of
+        (True , _   ) -> ps ++ [FParam (SEType, Nothing) (Ident "()")]
+        (False, True) -> ps ++ [FParam (ImpType, Nothing) (Ident "()")]
+        _             -> ps
 
 annotateExpr :: Expression Pos -> TypeChecker (Expression (TypeMetaData Pos))
 
@@ -213,9 +219,13 @@ annotateExpr e@(SeqExpr a e1 e2) = do
 -- Lambda expressions.
 
 annotateExpr e@(LamExpr a params body) = do
-    (params', oenv  ) <- annotateParams
-    (body'  , bodySt) <- localObjs (Map.union oenv) (annotateBody body)
-    let params'' = lamParams params' bodySt
+    (params', oenv) <- annotateParams
+    let initSt = initialBlkSt
+            { isImpure = isFunImpure (curryType (map typ params') unitT)
+                                     (length params')
+            }
+    (body', bodySt) <- localObjs (Map.union oenv) (annotateBody body initSt)
+    let params'' = addImpurityParam bodySt params'
         t        = curryType (map typ params'') (typ body')
     return $ LamExpr (annWith t a) params'' body'
   where
@@ -232,6 +242,12 @@ annotateExpr e@(LamExpr a params body) = do
         (pat', oenv) <- annotatePat pat
         return (LamParam (annWith (typ pat') a) pat', oenv)
     curryType ps r = foldr FType r ps
+    addImpurityParam st ps = case (hasSideeffects st, isImpure st) of
+        (True, _) ->
+            ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
+        (False, True) ->
+            ps ++ [LamParam (ImpType, Nothing) (PatDisc (ImpType, Nothing))]
+        _ -> ps
 
 -- Match expressions.
 
@@ -375,11 +391,13 @@ annotateAccess t ctx = foldM access (t, [])
                 return (r, MembAcc (annWith r a) i : acc')
             Just (Obj t' _) ->
                 error
-                    $  "The type"
-                    ++ show (name t)
+                    $  "The type "
+                    ++ show t
                     ++ " has a member "
                     ++ show i
-                    ++ " whose first formal parameter is not of that type. This should be impossible."
+                    ++ " whose first formal parameter is not of that type. "
+                    ++ show t'
+                    ++ ". This should be impossible."
             Nothing -> raise $ Error.invMembAccess t i ctx
 
 annotateLit :: Literal Pos -> Literal (TypeMetaData Pos)
@@ -564,38 +582,72 @@ annotatePat p =
     error $ "This type of patterns is not supported yet. " ++ show p
 
 annotateBody
-    :: FunBody Pos -> TypeChecker (FunBody (TypeMetaData Pos), BlockState)
-annotateBody body = case body of
+    :: FunBody Pos
+    -> BlockState
+    -> TypeChecker (FunBody (TypeMetaData Pos), BlockState)
+annotateBody body initSt = case body of
     FExprBody a e -> do
         e' <- annotateExpr e
-        return (FExprBody (annWith (typ e') a) e', mempty)
+        return (FExprBody (annWith (typ e') a) e', initSt)
     FStmtBody a s -> do
-        (s', t, bodySt) <- annotateStmtBody s
-        return (FStmtBody (annWith t a) s', bodySt)
-
-annotateStmtBody
-    :: Statement Pos
-    -> TypeChecker (Statement (TypeMetaData Pos), Type, BlockState)
-annotateStmtBody s = do
-    clearBlkSt
-    (s', bodySt) <- blockScope (analStmt s)
-    t            <- unifyRets (reachable bodySt) (rets bodySt)
-    return (s', t, bodySt)
+        ((body', t), bodySt) <- blockScope
+            (do
+                modifyBlkSt (const initSt)
+                annotateStmtBody s
+            )
+        return (body', bodySt)
+    FVIterBody _ _ ->
+        error
+            $  "FVIterBody in type check. This should be impossible"
+            ++ show body
+    FRIterBody _ _ ->
+        error
+            $  "FRIterBody in type check. This should be impossible"
+            ++ show body
   where
-    unifyRets reachable []
-        | reachable
-        = return unitT
-        | otherwise
-        = error
-            $ "End of function body is unreachable but there are no return types. This should be impossible: "
-            ++ show s
-    unifyRets reachable rets = case unifys rets of
-        Just subst ->
-            let ret = apply subst (head rets)
-            in  if reachable && ret /= unitT
-                    then raise $ Error.noRet s
-                    else return ret
-        Nothing -> raise $ Error.conflRetTypes rets s
+    annotateStmtBody
+        :: Statement Pos -> TypeChecker (FunBody (TypeMetaData Pos), Type)
+    annotateStmtBody s = do
+        s'     <- analStmt s
+        bodySt <- getBlkSt
+        case (rets bodySt, yields bodySt) of
+            (rets, []) -> do    -- Includes ([], []), no returns => return ().
+                t <- unifyRets (reachable bodySt) rets
+                return (FStmtBody (annWith t (pos body)) s', t)
+            ([], yields) -> do
+                iterElemT <- unifyYields yields
+                t         <- case (hasSideeffects bodySt, isImpure bodySt) of
+                    (True , _    ) -> refIteratorT iterElemT SEType
+                    (False, True ) -> refIteratorT iterElemT ImpType
+                    (False, False) -> iteratorT iterElemT
+                let syntaxCtor = if hasSideeffects bodySt || isImpure bodySt
+                        then FRIterBody
+                        else FVIterBody
+                -- When returning an iterator, the impurities are contained within the iterator functions.
+                modifyBlkSt
+                    (\st -> st { hasSideeffects = False, isImpure = False })
+                return (syntaxCtor (annWith t (pos body)) s', t)
+            _ -> raise $ Error.mixingYieldAndReturn s
+
+      where
+        unifyRets reachable []
+            | reachable
+            = return unitT
+            | otherwise
+            = error
+                $ "End of function body is unreachable but there are no return types. This should be impossible: "
+                ++ show s
+        unifyRets reachable rets = case unifys rets of
+            Just subst ->
+                let ret = apply subst (head rets)
+                in  if reachable && ret /= unitT
+                        then raise $ Error.noRet s
+                        else return ret
+            Nothing -> raise $ Error.conflRetTypes rets s
+        unifyYields yields = case unifys yields of
+            Just subst -> return $ apply subst (head yields)
+            Nothing    -> raise $ Error.conflYieldTypes yields s
+
 
 analStmt :: Statement Pos -> TypeChecker (Statement (TypeMetaData Pos))
 analStmt (EmptyStmt a         ) = return $ EmptyStmt (annWith unitT a)
@@ -638,6 +690,18 @@ analStmt (RetStmt a) = do
     addRet unitT
     unreachable
     return $ RetStmt (annWith unitT a)
+analStmt (YieldStmt a e) = do
+    e' <- annotateExpr e
+    let t = typ e'
+    addYield t
+    return $ YieldStmt (annWith t a) e'
+analStmt (YieldRetStmt a) = do
+    -- Yield return may happen in an iterator of any type, so we add any type as the yield.
+    -- In theory, all those yield returns should be of the same type, but the iterator's type gets unified
+    -- further upstream, so all different type variables will get substituted with the same type.
+    var <- newvar
+    addYield (TypeVar var)
+    return $ YieldRetStmt (annWith unitT a)
 analStmt (CondStmt a (IfElifStmts a' _if elifs)) = do
     (if', afterIf) <- blockScope (analIf _if)
     elifRes        <- mapM (blockScope . analElif) elifs

@@ -15,6 +15,8 @@ module Harper.TypeSystem.Typing
     , unify
     , unifys
     , canUnify
+    , curryType
+    , isFunImpure
     )
 where
 import           Control.Monad
@@ -170,3 +172,17 @@ unifys = accSubst Map.empty
 
 canUnify :: Type -> Type -> Bool
 canUnify = (isJust .) . unify
+
+curryType :: [Type] -> Type -> Type
+curryType ps r = foldr FType r ps
+
+isFunImpure :: Type -> Int -> Bool
+isFunImpure _           0 = False
+isFunImpure (FType p r) n = isParamImpure p || isFunImpure r (n - 1)
+  where
+    isParamImpure RType{}                = True
+    isParamImpure VType { vArgs = args } = any isParamImpure args
+    isParamImpure (FType ImpType r)      = True
+    isParamImpure (FType p       r)      = isParamImpure r
+    isParamImpure (TupType ts     )      = any isParamImpure ts
+    isParamImpure _                      = False

@@ -50,6 +50,9 @@ separator LambdaParam "" ;
 
 FExprBody. FunBody ::= Expression ;
 FStmtBody. FunBody ::= Statement5 ;
+-- Used for function bodies converted to iterators.
+internal FVIterBody. FunBody ::= Statement5 ;
+internal FRIterBody. FunBody ::= Statement5 ;
 
 -- Literals
 
@@ -142,6 +145,7 @@ RetExprStmt.     Statement4 ::= "return" Expression ";" ;
 CntStmt.         Statement4 ::= "continue" ";" ;
 BrkStmt.         Statement4 ::= "break" ";" ;
 YieldStmt.       Statement4 ::= "yield" Expression ";" ;
+YieldRetStmt.    Statement4 ::= "yield" "return" ";" ;
 _.               Statement4 ::= Statement5 ;
 
 MatchStmt.       Statement3 ::= "match" Expression "{" [MatchStatementClause] "}" ;
@@ -233,7 +237,7 @@ TSig. TypeSignature ::= UIdent [TypeParameter] ;
 
 ValTDecl.  TypeDecl ::= "value" TypeSignature "=" "{" TypeBody "}" ;
 ValTUDecl. TypeDecl ::= "value" TypeSignature "=" "{" [TypeVariantDecl] "}" ;
-RefTDecl.   TypeDecl ::= "ref" TypeSignature "=" "{" TypeBody "}" ;
+RefTDecl.  TypeDecl ::= "ref" TypeSignature "=" "{" TypeBody "}" ;
 
 TParam. TypeParameter ::= Ident ;
 separator TypeParameter "" ;

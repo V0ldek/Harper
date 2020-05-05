@@ -55,8 +55,10 @@ instance (Typed a) => Typed (LambdaParam a) where
     typ (LamParam a _) = typ a
 
 instance (Typed a) => Typed (FunBody a) where
-    typ (FExprBody a _) = typ a
-    typ (FStmtBody a _) = typ a
+    typ (FExprBody  a _) = typ a
+    typ (FStmtBody  a _) = typ a
+    typ (FVIterBody a _) = typ a
+    typ (FRIterBody a _) = typ a
 
 instance (Typed a) => Typed (BoolLiteral a) where
     typ (BTrue  a) = typ a
@@ -120,6 +122,7 @@ instance (Typed a) => Typed (Statement a) where
     typ (CntStmt a            ) = typ a
     typ (BrkStmt a            ) = typ a
     typ (YieldStmt a _        ) = typ a
+    typ (YieldRetStmt a       ) = typ a
     typ (MatchStmt a _ _      ) = typ a
     typ (WhileStmt a _ _      ) = typ a
     typ (ForInStmt a _ _ _    ) = typ a
