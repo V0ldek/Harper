@@ -89,13 +89,18 @@ instance Functor LambdaParam where
     fmap f x = case x of
         LamParam a pattern -> LamParam (f a) (fmap f pattern)
 data FunBody a
-    = FExprBody a (Expression a) | FStmtBody a (Statement a)
+    = FExprBody a (Expression a)
+    | FStmtBody a (Statement a)
+    | FVIterBody a (Statement a)
+    | FRIterBody a (Statement a)
   deriving (Eq, Ord, Show, Read)
 
 instance Functor FunBody where
     fmap f x = case x of
         FExprBody a expression -> FExprBody (f a) (fmap f expression)
         FStmtBody a statement -> FStmtBody (f a) (fmap f statement)
+        FVIterBody a statement -> FVIterBody (f a) (fmap f statement)
+        FRIterBody a statement -> FRIterBody (f a) (fmap f statement)
 data BoolLiteral a = BTrue a | BFalse a
   deriving (Eq, Ord, Show, Read)
 
@@ -220,6 +225,7 @@ data Statement a
     | CntStmt a
     | BrkStmt a
     | YieldStmt a (Expression a)
+    | YieldRetStmt a
     | MatchStmt a (Expression a) [MatchStatementClause a]
     | WhileStmt a (Expression a) (Statement a)
     | ForInStmt a (Pattern a) (Expression a) (Statement a)
@@ -253,6 +259,7 @@ instance Functor Statement where
         CntStmt a -> CntStmt (f a)
         BrkStmt a -> BrkStmt (f a)
         YieldStmt a expression -> YieldStmt (f a) (fmap f expression)
+        YieldRetStmt a -> YieldRetStmt (f a)
         MatchStmt a expression matchstatementclauses -> MatchStmt (f a) (fmap f expression) (map (fmap f) matchstatementclauses)
         WhileStmt a expression statement -> WhileStmt (f a) (fmap f expression) (fmap f statement)
         ForInStmt a pattern expression statement -> ForInStmt (f a) (fmap f pattern) (fmap f expression) (fmap f statement)

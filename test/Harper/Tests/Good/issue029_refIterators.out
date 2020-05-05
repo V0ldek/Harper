@@ -1,0 +1,16 @@
+Before next.
+Before first.
+true
+42
+Before mutation.
+42
+Before next 2.
+After first.
+true
+42
+Before next 3.
+After second.
+false
+42
+
+Execution ended with value: ()

@@ -1,4 +1,4 @@
-Error: the constructor of the type `RefBox a&` has an invalid type `a& -> Unit`. A constructor must have a type matching `* -> RefBox a&`.
+Error: the constructor of the type `RefBox a&` has an invalid type `a& -> Unit`.  The constructor must return an instance of `RefBox a&`.
 During evaluation of:
   ref RefBox a = {
       data = {

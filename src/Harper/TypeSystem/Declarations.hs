@@ -157,9 +157,9 @@ declToType d@(RefTDecl _ (TSig _ tName tParams) (DataTBody a'' fldDecls membDecl
         then return ()
         else raise $ Error.invCtorType t ctor d
       where
-        matchTail t (FType _ r) | canUnify t r = True
-        matchTail t (FType _ r)                = matchTail t r
-        matchTail _ _                          = False
+        matchTail t r | canUnify t r = True
+        matchTail t (FType _ r)      = matchTail t r
+        matchTail _ _                = False
 
 collectMembs
     :: Map.Map Ident [TypeHint Pos]
@@ -309,13 +309,11 @@ parseType e@(TApp _ u es) = do
             then raise $ Error.typeInvArity t (length params) n e
             else do
                 tArgs <- mapM parseType es
-                let subst = Map.fromList (zip params tArgs)
                 return $ VType u params tArgs c membs
         Just t@(RType _ params _ membs flds) -> if length params /= n
             then raise $ Error.typeInvArity t (length params) n e
             else do
                 tArgs <- mapM parseType es
-                let subst = Map.fromList (zip params tArgs)
                 return $ RType u params tArgs membs flds
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e

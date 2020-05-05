@@ -1,0 +1,13 @@
+Error: cannot unify conflicting yield types of a function: `(Integer, Integer)`, `Integer`.
+During evaluation of:
+{
+  var (i :: Integer)= 0 ;
+  while i < n {
+    yield i ;
+    i += 1 ;
+  }
+  yield (i, n);
+}
+Located at line 2 column 14
+
+Execution terminated with an error: type error.

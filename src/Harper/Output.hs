@@ -4,6 +4,7 @@ module Harper.Output
   , outputMsg
   , outputLog
   , outputErr
+  , outputErrInternal
   , outputConflDecls
   )
 where
@@ -42,7 +43,7 @@ showsPrt :: Print a => a -> ShowS
 showsPrt x = (render (prt 0 x) ++)
 
 outputMsg :: String -> HarperOutput ()
-outputMsg s = output (s ++) 
+outputMsg s = output (s ++)
 
 outputLog :: ShowS -> HarperOutput ()
 outputLog s = output msg
@@ -61,6 +62,10 @@ outputErr s ctx = output msg
       . prtPosition ctx
       . ("\n" ++)
       . ansiFgColor white
+
+outputErrInternal :: ShowS -> HarperOutput ()
+outputErrInternal s = output msg
+  where msg = ansiFgColor red . ("Error: " ++) . s . ansiFgColor white
 
 outputConflDecls :: (Position a, Print a) => ShowS -> [a] -> HarperOutput ()
 outputConflDecls s ctxs = output msg
