@@ -7,6 +7,7 @@ where
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
+import           Data.Char
 import qualified Data.Map                      as Map
 import qualified Data.Set                      as Set
 import           Data.Maybe
@@ -64,16 +65,19 @@ eval :: Expression Meta -> Interpreter Object
 
 -- Literals
 
-eval (  LitExpr _ (IntLit  _ n         )) = return $ PInt n
-eval (  LitExpr _ (BoolLit _ (BTrue  _))) = return $ PBool True
-eval (  LitExpr _ (BoolLit _ (BFalse _))) = return $ PBool False
-eval (  LitExpr _ (StrLit  _ s         )) = return $ PStr s
-eval (  LitExpr _ (CharLit _ c         )) = return $ PChar c
-eval (  LitExpr _ (UnitLit _           )) = return PUnit
+eval (LitExpr _ (IntLit  _ n         )) = return $ PInt n
+eval (LitExpr _ (BoolLit _ (BTrue  _))) = return $ PBool True
+eval (LitExpr _ (BoolLit _ (BFalse _))) = return $ PBool False
+eval (LitExpr _ (StrLit  _ s         )) = return $ PStr (unescape s)
+  where
+    unescape [] = []
+    unescape s  = let [(esc, s')] = readLitChar s in esc : unescape s'
+eval (  LitExpr _ (CharLit _ c)) = return $ PChar c
+eval (  LitExpr _ (UnitLit _  )) = return PUnit
 
 -- Value construction.
 
-eval e@(VCtorExpr _ ctor flds           ) = do
+eval e@(VCtorExpr _ ctor flds  ) = do
     lookup <- asksTypes (Map.lookup ctor)
     case lookup of
         Just t@ValueCtor{} -> do
