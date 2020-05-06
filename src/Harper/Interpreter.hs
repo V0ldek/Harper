@@ -401,6 +401,69 @@ exec w@(WhileStmt _ pred s) kRet k = do
                 ++ show w
                 ++ " "
                 ++ show o
+-- See issue #30 for these semantics written in Harper instead of raw AST.
+exec f@(ForInVStmt a pat e s) kRet k = do
+    vars <- newvars 4
+    let iterVar       = vars !! 0
+        hasNextVar    = vars !! 1
+        iter'Var      = vars !! 2
+        hasNext'Var   = vars !! 3
+        iter          = ObjExpr a iterVar
+        hasNext       = ObjExpr a hasNextVar
+        iter'         = ObjExpr a iter'Var
+        hasNext'      = ObjExpr a hasNext'Var
+        iterateAccess = MembExpr a e [MembAcc a iterateI]
+        nextAccess    = MembExpr a iter [MembAcc a iterNextI]
+        currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
+        iterInit =
+            DconStmt a (PatDecl a (LocVarDecl a (Decl a iterVar))) iterateAccess
+        hasNextDecl = DeclStmt a (LocVarDecl a (Decl a hasNextVar))
+        updateStmt  = DconStmt
+            a
+            (PatTup
+                a
+                (PatTupTail a
+                            (PatDecl a (LocValDecl a (Decl a hasNext'Var)))
+                            (PatDecl a (LocValDecl a (Decl a iter'Var)))
+                )
+            )
+            nextAccess
+        updateIter = AssStmt a iterVar iter'
+        updateHasNext = AssStmt a hasNextVar hasNext'
+        initStmt = DconStmt a pat (MembExpr a iter [MembAcc a iterCurrentI])
+        whileBody =
+            StmtBlock a [initStmt, s, updateStmt, updateIter, updateHasNext]
+        whileStmt = WhileStmt a hasNext whileBody
+        block     = StmtBlock
+            a
+            [ iterInit
+            , hasNextDecl
+            , updateStmt
+            , updateIter
+            , updateHasNext
+            , whileStmt
+            ]
+    exec block kRet k
+exec f@(ForInRStmt a pat e s) kRet k = do
+    iterVar <- newvar
+    let iter          = ObjExpr a iterVar
+        iterateAccess = MembExpr a e [MembAcc a iterateI]
+        nextAccess    = MembExpr a iter [MembAcc a iterNextI]
+        currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
+        unit          = LitExpr a (UnitLit a)
+        pred          = AppExpr a nextAccess unit
+        iterInit =
+            DconStmt a (PatDecl a (LocValDecl a (Decl a iterVar))) iterateAccess
+        initStmt  = DconStmt a pat (AppExpr a currentAccess unit)
+        whileBody = StmtBlock a [initStmt, s]
+        whileStmt = WhileStmt a pred whileBody
+        block     = StmtBlock a [iterInit, whileStmt]
+    exec block kRet k
+
+exec f@ForInStmt{} _ _ =
+    error
+        $ "ForInStmt in interpreter, should've been converted during type check."
+        ++ show f
 exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
   where
     execMatches e (MatchStmtClause _ p s : cs) =

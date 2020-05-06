@@ -1,0 +1,24 @@
+Error: the constructor of the type `RefBox a&` has an invalid type `a& -> Unit`. The constructor must be an impure function returning an instance of `RefBox a&`.
+During evaluation of:
+  ref RefBox a = {
+      data = {
+          a :: a ;
+      }
+
+      ctor :: a -> () ;
+      ctor a = {
+          this.data . a := a ;
+          return () ;
+      } ;
+
+      get :: impure -> a ;
+      get = this.data . a ;
+
+      set :: a -> impure -> () ;
+      set a = {
+          this.data . a := a ;
+      } ;
+  }
+Located at line 1 column 1
+
+Execution terminated with an error: type error.

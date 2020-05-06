@@ -121,6 +121,30 @@ invPredType t e ctx = do
         ctx
     typeErr
 
+notIterable
+    :: (Position p1, Print p2, Position p2)
+    => Type
+    -> Type
+    -> Expression p1
+    -> p2
+    -> HarperOutput a
+notIterable t1 t2 e ctx = do
+    outputErr
+        ( ("expression `" ++)
+        . showsPrt e
+        . ("` of type `" ++)
+        . shows t1
+        . ("` does not implement `Iterable " ++)
+        . showsPrec 3 t2
+        . ("` or `RefIterable " ++)
+        . showsPrec 3 t2
+        . (" impure` or `RefIterable " ++)
+        . showsPrec 3 t2
+        . (" sideeffect` and cannot be used in a `for` `in` statement." ++)
+        )
+        ctx
+    typeErr
+
 invApp :: (Position p) => Type -> Expression p -> HarperOutput a
 invApp t1 ctx = do
     outputErr
@@ -493,7 +517,7 @@ invCtorType t ctor ctx = do
         . shows t
         . ("` has an invalid type `" ++)
         . shows ctor
-        . ("`. The constructor must return an instance of `" ++)
+        . ("`. The constructor must be an impure function returning an instance of `" ++)
         . shows t
         . ("`." ++)
         )

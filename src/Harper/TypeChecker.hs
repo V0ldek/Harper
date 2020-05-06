@@ -363,7 +363,7 @@ annotateExpr e@(DataExpr _ []) =
 annotateExpr e@(DataExpr a (MembAcc a' i : as)) = do
     lookup <- lookupObj thisIdent
     case lookup of
-        Just (Obj (RType _ _ _ _ flds) _) -> case Map.lookup i flds of
+        Just (Obj RType { rData = flds } _) -> case Map.lookup i flds of
             Just ptr -> do
                 o         <- gets ((Map.! ptr) . objData)
                 (t', as') <- annotateAccess (objType o) e as
@@ -726,6 +726,21 @@ analStmt w@(WhileStmt a e s) = do
             mayEnterOneOf [after]
             return $ WhileStmt (annWith unitT a) e' s'
         else raise $ Error.invPredType t e w
+analStmt f@(ForInStmt a pat e s) = do
+    e' <- annotateExpr e
+    (pat', oenv) <- annotatePat pat
+    let t = typ e'
+        t' = typ pat'
+    (s', after) <- blockScope (localObjs (Map.union oenv) (analStmt s))
+    mayEnterOneOf [after]
+    if iterable t t'
+        then return $ ForInVStmt (annWith unitT a) pat' e' s'
+        else if refIterable t t' 
+        then return $ ForInRStmt (annWith unitT a) pat' e' s'
+        else raise $ Error.notIterable t t' e f
+analStmt f@ForInVStmt{} = error $ "ForInVStmt in TypeCheck. This should be impossible." ++ show f
+analStmt f@ForInRStmt{} = error $ "ForInRStmt in TypeCheck. This should be impossible." ++ show f
+
 analStmt m@(MatchStmt a e cs) = do
     e'        <- annotateExpr e
     clauseRes <- mapM (blockScope . annotateMatchStmtClause (typ e')) cs
@@ -816,7 +831,7 @@ analDataAss
 analDataAss i e ctx = do
     lookup <- lookupObj thisIdent
     case lookup of
-        Just (Obj (RType _ _ _ _ flds) _) -> case Map.lookup i flds of
+        Just (Obj RType { rData = flds } _) -> case Map.lookup i flds of
             Just ptr -> do
                 o <- gets ((Map.! ptr) . objData)
                 if assignable o
@@ -879,32 +894,6 @@ analElse :: ElseStatement Pos -> TypeChecker (ElseStatement (TypeMetaData Pos))
 analElse c@(ElseStmt a s) = do
     s' <- analStmt s
     return $ ElseStmt (annWith unitT a) s'
-
-funParams
-    :: [FunParam (TypeMetaData Pos)]
-    -> BlockState
-    -> [FunParam (TypeMetaData Pos)]
-funParams ps st | hasSideeffects st = case mLast ps of
-    Just (FParam (SEType, _) _) -> ps
-    _                           -> ps ++ [FParam (SEType, Nothing) (Ident "()")]
-funParams ps _ | any (\(FParam (t, _) _) -> paramIsImpure t) ps =
-    case mLast ps of
-        Just (FParam (t, _) _) | t == ImpType || t == SEType -> ps
-        _ -> ps ++ [FParam (ImpType, Nothing) (Ident "()")]
-funParams ps _ = ps
-
-lamParams
-    :: [LambdaParam (TypeMetaData Pos)]
-    -> BlockState
-    -> [LambdaParam (TypeMetaData Pos)]
-lamParams ps st | hasSideeffects st = case mLast ps of
-    Just (LamParam (SEType, _) _) -> ps
-    _ -> ps ++ [LamParam (SEType, Nothing) (PatDisc (SEType, Nothing))]
-lamParams ps _ | any (\(LamParam (t, _) _) -> paramIsImpure t) ps =
-    case mLast ps of
-        Just (LamParam (t, _) _) | t == ImpType || t == SEType -> ps
-        _ -> ps ++ [LamParam (ImpType, Nothing) (PatDisc (ImpType, Nothing))]
-lamParams ps _ = ps
 
 paramIsImpure :: Type -> Bool
 paramIsImpure RType{}                   = True

@@ -25,6 +25,7 @@ import           Harper.Output
 import           Harper.TypeSystem.Alloc
 import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.GlobalTypes
+import           Harper.TypeSystem.Interfaces
 import           Harper.TypeSystem.Typing
 import           Harper.Utility
 
@@ -47,7 +48,8 @@ declTypes ds = do
     loadTypes (toStore ts)
     let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
     modify (\st -> st { tCtors = ctorStore })
-    -- Member type signatures now have references to "empty" types without any members.
+    forM_ ts implementInterfaces
+    -- Member type signatures now have references to "empty" types without any members or interfaces.
     -- Not the cleanest solution, but it works.
     forM_ ts fixMemberSignatures
   where
@@ -63,25 +65,25 @@ declTypes ds = do
     toIdent d@(ValTUDecl _ (TSig _ i _) _) = uti i
     toIdent d@(RefTDecl  _ (TSig _ i _) _) = uti i
     toStore ts = Map.fromList (map (\t -> (name t, t)) ts)
-    fixMemberSignatures (VType _ _ _ _ membs) =
+    fixMemberSignatures VType { vMembs = membs } =
         forM_ (Map.elems membs) fixMemberSignatureAt
-    fixMemberSignatures (RType _ _ _ membs flds) = do
+    fixMemberSignatures RType { rMembs = membs, rData = flds } = do
         forM_ (Map.elems membs) fixMemberSignatureAt
         forM_ (Map.elems flds)  fixMemberSignatureAt
     fixMemberSignatureAt ptr = do
         o <- gets ((Map.! ptr) . objData)
         t <- fixSignature (objType o)
         modifyObjData (Map.insert ptr o { objType = t })
-    fixSignature (VType tName args params ctors membs) = do
+    fixSignature (VType tName args params _ _ _ _) = do
         t       <- getType tName
         params' <- mapM fixSignature params
-        let VType _ _ _ ctors' membs' = t
-        return $ VType tName args params' ctors' membs'
-    fixSignature (RType tName args params membs flds) = do
+        let VType _ _ _ ctors' membs' univMembs' ifaces' = t
+        return $ VType tName args params' ctors' membs' univMembs' ifaces'
+    fixSignature (RType tName args params membs flds ifaces) = do
         t       <- getType tName
         params' <- mapM fixSignature params
-        let RType _ _ _ membs' flds' = t
-        return $ RType tName args params' membs' flds'
+        let RType _ _ _ membs' flds' ifaces' = t
+        return $ RType tName args params' membs' flds' ifaces'
     fixSignature (FType p r) = do
         p' <- fixSignature p
         r' <- fixSignature r
@@ -95,28 +97,39 @@ declToSig d@(ValTUDecl _ sig@(TSig _ i params) _) = do
     let paramIs  = [ i | TParam _ i <- params ]
         typeVars = map TypeVar paramIs
     case findDups paramIs of
-        [] -> return $ VType i paramIs typeVars Set.empty Map.empty
+        [] -> return $ VType i
+                             paramIs
+                             typeVars
+                             Set.empty
+                             Map.empty
+                             Set.empty
+                             Map.empty
         is -> raise $ Error.conflTypeParams is d
 declToSig d@(RefTDecl _ sig@(TSig _ i params) _) = do
     let paramIs  = [ i | TParam _ i <- params ]
         typeVars = map TypeVar paramIs
     case findDups paramIs of
-        [] -> return $ RType i paramIs typeVars Map.empty Map.empty
+        [] -> return $ RType i paramIs typeVars Map.empty Map.empty Map.empty
         is -> raise $ Error.conflTypeParams is d
 
 declToType :: TypeDecl Pos -> TypeChecker Type
 declToType (ValTDecl a sig@(TSig _ i _) body) =
     declToType (ValTUDecl a sig [TVarDecl a i body])
 declToType d@(ValTUDecl _ (TSig _ tName tParams) vs) = do
-    t         <- declToSig d
-    membTypes <- foldM collectMembs Map.empty vs
-    membs     <- mapM
+    t                    <- declToSig d
+    (membTypes, isByVar) <- foldM collectMembs (Map.empty, []) vs
+    membs                <- mapM
         (unionMembs t (tVars t))
         (Map.toList (Map.map (map $ addThisArg tName tParams) membTypes))
     ls <- allocs (map (\m -> Obj (snd m) False) membs)
-    return $ t { ctors  = Set.fromList (getCtorIdents d)
-               , vMembs = Map.fromList (zip (map fst membs) ls)
+    return $ t { ctors      = Set.fromList (getCtorIdents d)
+               , vMembs     = Map.fromList (zip (map fst membs) ls)
+               , vUnivMembs = findUniv isByVar
                }
+  where
+    findUniv []       = Set.empty
+    findUniv [x     ] = Set.fromList x
+    findUniv (x : xs) = Set.intersection (Set.fromList x) (findUniv xs)
 declToType d@(RefTDecl a (TSig a' tName tParams) (TBody a'' membs)) =
     declToType (RefTDecl a (TSig a' tName tParams) (DataTBody a'' [] membs))
 declToType d@(RefTDecl _ (TSig _ tName tParams) (DataTBody a'' fldDecls membDecls))
@@ -157,21 +170,23 @@ declToType d@(RefTDecl _ (TSig _ tName tParams) (DataTBody a'' fldDecls membDecl
         then return ()
         else raise $ Error.invCtorType t ctor d
       where
-        matchTail t r | canUnify t r = True
-        matchTail t (FType _ r)      = matchTail t r
-        matchTail _ _                = False
+        matchTail t (FType ImpType r) | canUnify t r = True
+        matchTail t (FType _ r)                      = matchTail t r
+        matchTail _ _                                = False
 
 collectMembs
-    :: Map.Map Ident [TypeHint Pos]
+    :: (Map.Map Ident [TypeHint Pos], [[Ident]])
     -> TypeVariantDecl Pos
-    -> TypeChecker (Map.Map Ident [TypeHint Pos])
-collectMembs acc (TVarDecl _ ctor body) =
+    -> TypeChecker (Map.Map Ident [TypeHint Pos], [[Ident]])
+collectMembs (acc, is) (TVarDecl _ ctor body) = do
     let ths = case body of
             DataTBody _ flds membs ->
                 [ th | TMemTHint _ th <- membs ]
                     ++ [ th | TFldDecl _ th <- flds ]
             TBody _ membs -> [ th | TMemTHint _ th <- membs ]
-    in  collectMembs' ctor acc ths
+        is' = map declI ths
+    acc' <- collectMembs' ctor acc ths
+    return (acc', is' : is)
 
 collectMembs'
     :: UIdent
@@ -305,16 +320,18 @@ parseType e@(TApp _ u es) = do
     lookup <- lookupType u
     let n = length es
     case lookup of
-        Just t@(VType _ params _ c membs) -> if length params /= n
+        Just t@VType { vParams = params } -> if length params /= n
             then raise $ Error.typeInvArity t (length params) n e
             else do
                 tArgs <- mapM parseType es
-                return $ VType u params tArgs c membs
-        Just t@(RType _ params _ membs flds) -> if length params /= n
+                let subst = Map.fromList $ zip params tArgs
+                return $ apply subst $ t { vName = u }
+        Just t@RType { rParams = params } -> if length params /= n
             then raise $ Error.typeInvArity t (length params) n e
             else do
                 tArgs <- mapM parseType es
-                return $ RType u params tArgs membs flds
+                let subst = Map.fromList $ zip params tArgs
+                return $ apply subst $ t { rName = u }
         Just t | n == 0 -> return t
         Just t          -> raise $ Error.typeInvArity t 0 n e
         Nothing         -> raise $ Error.undeclaredType u e

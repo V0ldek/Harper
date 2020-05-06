@@ -18,6 +18,7 @@ type OEnv = Map.Map Ident Ptr
 type ObjStore = Map.Map Ptr ObjData
 type CtorStore = Map.Map UIdent TypeCtor
 type TypeStore = Map.Map UIdent Type
+type IfaceStore = Map.Map UIdent IfaceImpl
 
 data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
 data BlockState = BlkSt { reachable :: Bool, rets :: [Type], yields :: [Type], isImpure :: Bool, hasSideeffects :: Bool  } deriving Show
@@ -25,8 +26,8 @@ data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord, Sh
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 
-data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors :: Set.Set UIdent, vMembs :: OEnv }
-          | RType { rName :: UIdent, rParams :: [Ident], rArgs :: [Type], rMembs :: OEnv, rData :: OEnv }
+data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors :: Set.Set UIdent, vMembs :: OEnv, vUnivMembs :: Set.Set Ident, vIfaces :: IfaceStore }
+          | RType { rName :: UIdent, rParams :: [Ident], rArgs :: [Type], rMembs :: OEnv, rData :: OEnv, rIfaces :: IfaceStore }
           | FType { param :: Type, ret :: Type }
           | TupType { tupElems :: [Type] }
           | TypeVar Ident
@@ -35,6 +36,8 @@ data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors 
           | ImpType
           | SEType
           deriving (Eq, Ord)
+
+data IfaceImpl = Iface { iName :: UIdent, iArgs :: [Type] } deriving (Eq, Ord, Show)
 
 name :: Type -> UIdent
 name t@VType{} = vName t
@@ -55,17 +58,24 @@ data TypeCtor = TypeCtor { tname :: UIdent, ctor :: UIdent, flds :: Map.Map Iden
 type TypeChecker = ReaderT Env (StateT Store (Output ShowS))
 
 instance Show Type where
-    showsPrec p (VType i _ []    _ _) = showsPrt i
-    showsPrec p (VType i _ targs _ _) = showsPrt i . (" " ++) . foldr
-        (.)
-        id
-        (intersperse (" " ++) (map (showsPrec 11) targs))
-    showsPrec p (RType i _ targs _ _) = showsPrt i . (" " ++) . foldr
-        (.)
-        id
-        (intersperse (" " ++) (map (showsPrec 11) targs))
+    showsPrec p (VType i _ []    _ _ _ _) = showsPrt i
+    showsPrec p (VType i _ targs _ _ _ _) = showParen
+        (p > 2)
+        (showsPrt i . (" " ++) . foldr
+            (.)
+            id
+            (intersperse (" " ++) (map (showsPrec 3) targs))
+        )
+    showsPrec p (RType i _ []    _ _ _) = showsPrt i
+    showsPrec p (RType i _ targs _ _ _) = showParen
+        (p > 2)
+        (showsPrt i . (" " ++) . foldr
+            (.)
+            id
+            (intersperse (" " ++) (map (showsPrec 3) targs))
+        )
     showsPrec p (FType pt rt) =
-        showParen (p > 10) (showsPrec 11 pt . (" -> " ++) . showsPrec p rt)
+        showParen (p > 1) (showsPrec 2 pt . (" -> " ++) . showsPrec 1 rt)
     showsPrec p (TypeVar   i    ) = showsPrt i
     showsPrec p (TypeBound i    ) = showsPrt i . ("&" ++)
     showsPrec p (PType     i    ) = showsPrt i
@@ -96,6 +106,9 @@ getsCtors f = gets (f . tCtors)
 getsTypes :: (TypeStore -> a) -> TypeChecker a
 getsTypes f = gets (f . types)
 
+getsObjData :: (ObjStore -> a) -> TypeChecker a
+getsObjData f = gets (f . objData)
+
 asksObjs :: (OEnv -> a) -> TypeChecker a
 asksObjs f = asks (f . objs)
 
@@ -113,6 +126,9 @@ lookupType i = getsTypes (Map.lookup i)
 
 getType :: UIdent -> TypeChecker Type
 getType i = getsTypes (Map.! i)
+
+getByPtr :: Ptr -> TypeChecker ObjData
+getByPtr ptr = getsObjData (Map.! ptr)
 
 loadTypes :: TypeStore -> TypeChecker ()
 loadTypes t = modify (\st -> st { types = Map.union t (types st) })

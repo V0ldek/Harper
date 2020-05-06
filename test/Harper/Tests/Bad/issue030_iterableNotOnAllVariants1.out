@@ -1,0 +1,9 @@
+Error: expression `l` of type `List Integer` does not implement `Iterable Integer` or `RefIterable Integer impure` or `RefIterable Integer sideeffect` and cannot be used in a `for` `in` statement.
+During evaluation of:
+for (a :: Integer)in l {
+  eval printLn a () ;
+}
+
+Located at line 36 column 3
+
+Execution terminated with an error: type error.

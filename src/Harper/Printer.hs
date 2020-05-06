@@ -232,6 +232,8 @@ instance Print (Statement a) where
     WhileStmt _ expression statement -> prPrec i 3 (concatD [doc (showString "while"), prt 0 expression, prt 5 statement])
     ForInStmt _ pattern expression statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 expression, prt 5 statement])
     CondStmt _ conditionalstatement -> prPrec i 3 (concatD [prt 0 conditionalstatement])
+    ForInVStmt _ pattern expression statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 expression, prt 5 statement])
+    ForInRStmt _ pattern expression statement -> prPrec i 3 (concatD [doc (showString "for"), prt 0 pattern, doc (showString "in"), prt 0 expression, prt 5 statement])
     DconStmt _ pattern expression -> prPrec i 2 (concatD [prt 0 pattern, doc (showString "="), prt 0 expression, doc (showString ";")])
     DeclStmt _ localobjdecl -> prPrec i 2 (concatD [prt 1 localobjdecl, doc (showString ";")])
     AssStmt _ id expression -> prPrec i 1 (concatD [prt 0 id, doc (showString ":="), prt 0 expression, doc (showString ";")])

@@ -153,6 +153,9 @@ WhileStmt.       Statement3 ::= "while" Expression Statement5 ;
 ForInStmt.       Statement3 ::= "for" Pattern "in" Expression Statement5 ;
 CondStmt.        Statement3 ::= ConditionalStatement ;
 _.               Statement3 ::= Statement4 ;
+-- Used to convert to `iterate` calls.
+internal ForInVStmt. Statement3 ::= "for" Pattern "in" Expression Statement5 ;
+internal ForInRStmt. Statement3 ::= "for" Pattern "in" Expression Statement5 ;
 
 DconStmt.        Statement2 ::= Pattern "=" Expression ";" ;
 DeclStmt.        Statement2 ::= LocalObjDecl1 ";" ;
