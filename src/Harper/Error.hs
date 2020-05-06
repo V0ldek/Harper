@@ -197,6 +197,16 @@ unassVar i ctx = do
         ctx
     runtimeErr
 
+varNotDefAss :: (Print p, Position p) => Ident -> p -> HarperOutput a
+varNotDefAss i ctx = do
+    outputErr
+        ( ("variable `" ++)
+        . showsPrt i
+        . ("` is not definitely assigned at point of use." ++)
+        )
+        ctx
+    typeErr
+
 nonExhPatMatch :: (Print p, Position p) => p -> HarperOutput a
 nonExhPatMatch ctx = do
     outputErr ("non exhaustive pattern match." ++) ctx
@@ -517,7 +527,8 @@ invCtorType t ctor ctx = do
         . shows t
         . ("` has an invalid type `" ++)
         . shows ctor
-        . ("`. The constructor must be an impure function returning an instance of `" ++)
+        . ("`. The constructor must be an impure function returning an instance of `" ++
+          )
         . shows t
         . ("`." ++)
         )

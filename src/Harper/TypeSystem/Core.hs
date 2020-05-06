@@ -31,7 +31,8 @@ data BlockState = BlkSt { reachable :: Bool
                         , yields :: [Type]
                         , isImpure :: Bool
                         , hasSideeffects :: Bool
-                        , usedObjs :: Set.Set Ptr  } deriving Show
+                        , usedObjs :: Set.Set Ptr
+                        , unassObjs :: Set.Set Ptr  } deriving Show
 
 data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord, Show)
 
