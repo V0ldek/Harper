@@ -20,14 +20,36 @@ type CtorStore = Map.Map UIdent TypeCtor
 type TypeStore = Map.Map UIdent Type
 type IfaceStore = Map.Map UIdent IfaceImpl
 
-data Store = St { blkSt :: BlockState, varSrc :: Int, types :: TypeStore, tCtors :: CtorStore, objData :: ObjStore }
-data BlockState = BlkSt { reachable :: Bool, rets :: [Type], yields :: [Type], isImpure :: Bool, hasSideeffects :: Bool  } deriving Show
+data Store = St { blkSt :: BlockState
+                , varSrc :: Int
+                , types :: TypeStore
+                , tCtors :: CtorStore
+                , objData :: ObjStore }
+
+data BlockState = BlkSt { reachable :: Bool
+                        , rets :: [Type]
+                        , yields :: [Type]
+                        , isImpure :: Bool
+                        , hasSideeffects :: Bool
+                        , usedObjs :: Set.Set Ptr  } deriving Show
+
 data ObjData = Obj { objType :: Type, assignable :: Bool } deriving (Eq, Ord, Show)
 
 newtype Env = Env { objs :: OEnv } deriving (Show, Eq)
 
-data Type = VType { vName :: UIdent, vParams :: [Ident], vArgs :: [Type], ctors :: Set.Set UIdent, vMembs :: OEnv, vUnivMembs :: Set.Set Ident, vIfaces :: IfaceStore }
-          | RType { rName :: UIdent, rParams :: [Ident], rArgs :: [Type], rMembs :: OEnv, rData :: OEnv, rIfaces :: IfaceStore }
+data Type = VType { vName :: UIdent
+                  , vParams :: [Ident]
+                  , vArgs :: [Type]
+                  , ctors :: Set.Set UIdent
+                  , vMembs :: OEnv
+                  , vUnivMembs :: Set.Set Ident
+                  , vIfaces :: IfaceStore }
+          | RType { rName :: UIdent
+                  , rParams :: [Ident]
+                  , rArgs :: [Type]
+                  , rMembs :: OEnv
+                  , rData :: OEnv
+                  , rIfaces :: IfaceStore }
           | FType { param :: Type, ret :: Type }
           | TupType { tupElems :: [Type] }
           | TypeVar Ident

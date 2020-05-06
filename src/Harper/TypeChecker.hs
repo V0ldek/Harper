@@ -102,7 +102,7 @@ annotate d@(FDecl a i params body) = do
                     else do
                         let t' = bindAllVars t
                             initSt =
-                                initialBlkSt { isImpure = isFunImpure t' n2 }
+                                initialBlkSt { isImpure = isTypeImpure t' }
                         (params', tBody) <- uncurryType t' params
                         paramEnv         <- declareFromList
                             [ (i, typ p) | p@(FParam _ i) <- params' ]
@@ -199,9 +199,12 @@ annotateExpr e@(TupExpr a tup) = do
 -- Object access.
 
 annotateExpr e@(ObjExpr a i) = do
-    lookup <- lookupObj i
+    lookup <- asksObjs (Map.lookup i)
     case lookup of
-        Just o  -> return $ ObjExpr (annWith (objType o) a) i
+        Just ptr -> do
+            usingObj ptr
+            o <- getByPtr ptr
+            return $ ObjExpr (annWith (objType o) a) i
         Nothing -> raise $ Error.undeclaredIdent i e
 
 -- Function application.
@@ -221,8 +224,7 @@ annotateExpr e@(SeqExpr a e1 e2) = do
 annotateExpr e@(LamExpr a params body) = do
     (params', oenv) <- annotateParams
     let initSt = initialBlkSt
-            { isImpure = isFunImpure (curryType (map typ params') unitT)
-                                     (length params')
+            { isImpure = isTypeImpure (curryType (map typ params') unitT)
             }
     (body', bodySt) <- localObjs (Map.union oenv) (annotateBody body initSt)
     let params'' = addImpurityParam bodySt params'
@@ -349,9 +351,12 @@ annotateExpr e@(TMembExpr a tName (MembAcc a' i : as)) = do
 -- This identifier.
 
 annotateExpr e@(ThisExpr a) = do
-    lookup <- lookupObj thisIdent
+    lookup <- asksObjs (Map.lookup thisIdent)
     case lookup of
-        Just o  -> return $ ThisExpr (annWith (objType o) a)
+        Just ptr -> do
+            usingObj ptr
+            o <- getByPtr ptr
+            return $ ThisExpr (annWith (objType o) a)
         Nothing -> raise $ Error.thisOutsideOfMember e
 
 -- Data access.
@@ -361,17 +366,22 @@ annotateExpr e@(DataExpr _ []) =
         $ "Data access with an empty access list. Grammar should disallow this."
         ++ show e
 annotateExpr e@(DataExpr a (MembAcc a' i : as)) = do
-    lookup <- lookupObj thisIdent
+    lookup <- asksObjs (Map.lookup thisIdent)
     case lookup of
-        Just (Obj RType { rData = flds } _) -> case Map.lookup i flds of
-            Just ptr -> do
-                o         <- gets ((Map.! ptr) . objData)
-                (t', as') <- annotateAccess (objType o) e as
-                return $ DataExpr (annWith t' a)
-                                  (MembAcc (annWith (objType o) a') i : as')
-            Nothing -> raise $ Error.undeclaredIdent i e
-        Just (Obj t@VType{} _) -> raise $ Error.dataAccessInValueType t e
-        Nothing                -> raise $ Error.dataAccessOutsideOfMemb e
+        Just ptr -> do
+            usingObj ptr
+            o <- getByPtr ptr
+            case o of
+                Obj RType { rData = flds } _ -> case Map.lookup i flds of
+                    Just ptr -> do
+                        o         <- gets ((Map.! ptr) . objData)
+                        (t', as') <- annotateAccess (objType o) e as
+                        return $ DataExpr
+                            (annWith t' a)
+                            (MembAcc (annWith (objType o) a') i : as')
+                    Nothing -> raise $ Error.undeclaredIdent i e
+                Obj t@VType{} _ -> raise $ Error.dataAccessInValueType t e
+        Nothing -> raise $ Error.dataAccessOutsideOfMemb e
 
 annotateExpr e =
     error $ "This type of expressions is not supported yet: " ++ show e
@@ -587,10 +597,14 @@ annotateBody
     -> TypeChecker (FunBody (TypeMetaData Pos), BlockState)
 annotateBody body initSt = case body of
     FExprBody a e -> do
-        e' <- annotateExpr e
-        return (FExprBody (annWith (typ e') a) e', initSt)
+        (body', bodySt) <- blockScope
+            (do
+                modifyBlkSt (const initSt)
+                annotateExprBody e
+            )
+        return (body', bodySt)
     FStmtBody a s -> do
-        ((body', t), bodySt) <- blockScope
+        (body', bodySt) <- blockScope
             (do
                 modifyBlkSt (const initSt)
                 annotateStmtBody s
@@ -605,15 +619,23 @@ annotateBody body initSt = case body of
             $  "FRIterBody in type check. This should be impossible"
             ++ show body
   where
+    annotateExprBody
+        :: Expression Pos -> TypeChecker (FunBody (TypeMetaData Pos))
+    annotateExprBody e = do
+        e'     <- annotateExpr e
+        bodySt <- getBlkSt
+        findImpureCaptures bodySt
+        return (FExprBody (annWith (typ e') (pos e)) e')
     annotateStmtBody
-        :: Statement Pos -> TypeChecker (FunBody (TypeMetaData Pos), Type)
+        :: Statement Pos -> TypeChecker (FunBody (TypeMetaData Pos))
     annotateStmtBody s = do
         s'     <- analStmt s
         bodySt <- getBlkSt
+        findImpureCaptures bodySt
         case (rets bodySt, yields bodySt) of
             (rets, []) -> do    -- Includes ([], []), no returns => return ().
                 t <- unifyRets (reachable bodySt) rets
-                return (FStmtBody (annWith t (pos body)) s', t)
+                return $ FStmtBody (annWith t (pos body)) s'
             ([], yields) -> do
                 iterElemT <- unifyYields yields
                 t         <- case (hasSideeffects bodySt, isImpure bodySt) of
@@ -626,7 +648,7 @@ annotateBody body initSt = case body of
                 -- When returning an iterator, the impurities are contained within the iterator functions.
                 modifyBlkSt
                     (\st -> st { hasSideeffects = False, isImpure = False })
-                return (syntaxCtor (annWith t (pos body)) s', t)
+                return $ syntaxCtor (annWith t (pos body)) s'
             _ -> raise $ Error.mixingYieldAndReturn s
 
       where
@@ -647,7 +669,14 @@ annotateBody body initSt = case body of
         unifyYields yields = case unifys yields of
             Just subst -> return $ apply subst (head yields)
             Nothing    -> raise $ Error.conflYieldTypes yields s
-
+    findImpureCaptures blkSt = do
+        ptrs <- visibleObjs
+        let captures = Set.intersection ptrs (usedObjs blkSt)
+        impureCaptures <- getsObjData
+            (\m -> Map.filter (\(Obj t ass) -> ass || isTypeImpure t)
+                $ Map.restrictKeys m captures
+            )
+        unless (Map.null impureCaptures) impure
 
 analStmt :: Statement Pos -> TypeChecker (Statement (TypeMetaData Pos))
 analStmt (EmptyStmt a         ) = return $ EmptyStmt (annWith unitT a)
@@ -727,19 +756,21 @@ analStmt w@(WhileStmt a e s) = do
             return $ WhileStmt (annWith unitT a) e' s'
         else raise $ Error.invPredType t e w
 analStmt f@(ForInStmt a pat e s) = do
-    e' <- annotateExpr e
+    e'           <- annotateExpr e
     (pat', oenv) <- annotatePat pat
-    let t = typ e'
+    let t  = typ e'
         t' = typ pat'
     (s', after) <- blockScope (localObjs (Map.union oenv) (analStmt s))
     mayEnterOneOf [after]
     if iterable t t'
         then return $ ForInVStmt (annWith unitT a) pat' e' s'
-        else if refIterable t t' 
-        then return $ ForInRStmt (annWith unitT a) pat' e' s'
-        else raise $ Error.notIterable t t' e f
-analStmt f@ForInVStmt{} = error $ "ForInVStmt in TypeCheck. This should be impossible." ++ show f
-analStmt f@ForInRStmt{} = error $ "ForInRStmt in TypeCheck. This should be impossible." ++ show f
+        else if refIterable t t'
+            then return $ ForInRStmt (annWith unitT a) pat' e' s'
+            else raise $ Error.notIterable t t' e f
+analStmt f@ForInVStmt{} =
+    error $ "ForInVStmt in TypeCheck. This should be impossible." ++ show f
+analStmt f@ForInRStmt{} =
+    error $ "ForInRStmt in TypeCheck. This should be impossible." ++ show f
 
 analStmt m@(MatchStmt a e cs) = do
     e'        <- annotateExpr e
@@ -852,7 +883,6 @@ assignTo o e ctx = do
     let t  = objType o
         t' = typ e'
     if canUnify t t' then return e' else raise $ Error.invType t' t e ctx
-
 
 annotateMatchStmtClause
     :: Type

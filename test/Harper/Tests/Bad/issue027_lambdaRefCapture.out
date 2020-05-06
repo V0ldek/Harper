@@ -1,0 +1,6 @@
+Error: the pattern of type `Integer -> Integer` cannot be used to match an expression of type `Integer -> impure -> Integer`.
+During evaluation of:
+ (g :: Integer -> Integer)
+Located at line 22 column 3
+
+Execution terminated with an error: type error.
