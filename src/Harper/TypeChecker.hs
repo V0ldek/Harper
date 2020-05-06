@@ -735,6 +735,14 @@ analStmt (YieldRetStmt a) = do
     var <- newvar
     addYield (TypeVar var)
     return $ YieldRetStmt (annWith unitT a)
+analStmt s@(BrkStmt a) = do
+    loop <- getsBlkSt inLoop
+    unless loop (raise $ Error.breakOutsideOfLoop s)
+    return $ BrkStmt (annWith unitT a)
+analStmt s@(CntStmt a) = do
+    loop <- getsBlkSt inLoop
+    unless loop (raise $ Error.continueOutsideOfLoop s)
+    return $ CntStmt (annWith unitT a)
 analStmt (CondStmt a (IfElifStmts a' _if elifs)) = do
     (if', afterIf) <- blockScope (analIf _if)
     elifRes        <- mapM (blockScope . analElif) elifs
@@ -755,7 +763,11 @@ analStmt w@(WhileStmt a e s) = do
     let t = typ e'
     if predicate t
         then do
-            (s', after) <- blockScope (analStmt s)
+            (s', after) <- blockScope
+                (do
+                    enterLoop
+                    analStmt s
+                )
             mayEnterOneOf [after]
             return $ WhileStmt (annWith unitT a) e' s'
         else raise $ Error.invPredType t e w
@@ -764,7 +776,14 @@ analStmt f@(ForInStmt a pat e s) = do
     (pat', oenv) <- annotatePat pat
     let t  = typ e'
         t' = typ pat'
-    (s', after) <- blockScope (localObjs (Map.union oenv) (analStmt s))
+    (s', after) <- blockScope
+        (localObjs
+            (Map.union oenv)
+            (do
+                enterLoop
+                analStmt s
+            )
+        )
     mayEnterOneOf [after]
     if iterable t t'
         then return $ ForInVStmt (annWith unitT a) pat' e' s'

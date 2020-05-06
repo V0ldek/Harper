@@ -12,8 +12,9 @@ import           Harper.Abs
 import           Harper.TypeSystem.Core
 
 instance Semigroup BlockState where
-    (BlkSt reachable1 rets1 yields1 imp1 se1 used1 unass1) <> (BlkSt reachable2 rets2 yields2 imp2 se2 used2 unass2)
+    (BlkSt reachable1 inLoop1 rets1 yields1 imp1 se1 used1 unass1) <> (BlkSt reachable2 inLoop2 rets2 yields2 imp2 se2 used2 unass2)
         = BlkSt (reachable1 || reachable2)
+                (inLoop1 || inLoop2)
                 (rets1 ++ rets2)
                 (yields1 ++ yields2)
                 (imp1 || imp2)
@@ -22,7 +23,7 @@ instance Semigroup BlockState where
                 (Set.union unass1 unass1)
 
 instance Monoid BlockState where
-    mempty = BlkSt False [] [] False False Set.empty Set.empty
+    mempty = BlkSt False False [] [] False False Set.empty Set.empty
 
 modifyBlkSt :: (BlockState -> BlockState) -> TypeChecker ()
 modifyBlkSt f = modify (\st -> st { blkSt = f (blkSt st) })
@@ -34,7 +35,7 @@ getBlkSt :: TypeChecker BlockState
 getBlkSt = getsBlkSt id
 
 initialBlkSt :: BlockState
-initialBlkSt = BlkSt True [] [] False False Set.empty Set.empty
+initialBlkSt = BlkSt True False [] [] False False Set.empty Set.empty
 
 clearBlkSt :: TypeChecker ()
 clearBlkSt = modifyBlkSt (const initialBlkSt)
@@ -74,6 +75,9 @@ unreachable :: TypeChecker ()
 unreachable =
     modifyBlkSt (\st -> st { reachable = False, unassObjs = Set.empty })
 
+enterLoop :: TypeChecker ()
+enterLoop = modifyBlkSt (\st -> st { inLoop = True })
+
 impure :: TypeChecker ()
 impure = modifyBlkSt (\st -> st { isImpure = True })
 
@@ -84,7 +88,10 @@ mayEnterOneOf :: [BlockState] -> TypeChecker ()
 mayEnterOneOf bs = do
     let b = mconcat bs
     modifyBlkSt
-        (\st -> (st <> b) { reachable = reachable st, unassObjs = unassObjs st }
+        (\st -> (st <> b) { reachable = reachable st
+                          , inLoop    = inLoop st
+                          , unassObjs = unassObjs st
+                          }
         )
 
 mustEnterOneOf :: [BlockState] -> TypeChecker ()

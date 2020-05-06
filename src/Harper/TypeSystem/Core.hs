@@ -27,6 +27,7 @@ data Store = St { blkSt :: BlockState
                 , objData :: ObjStore }
 
 data BlockState = BlkSt { reachable :: Bool
+                        , inLoop :: Bool
                         , rets :: [Type]
                         , yields :: [Type]
                         , isImpure :: Bool

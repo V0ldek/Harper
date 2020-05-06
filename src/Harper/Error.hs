@@ -597,6 +597,16 @@ iterCurrNoElem = do
         )
     runtimeErr
 
+breakOutsideOfLoop :: (Print p, Position p) => p -> HarperOutput a
+breakOutsideOfLoop ctx = do
+    outputErr ("a `break` statement cannot be used outside of a loop body."++) ctx
+    typeErr
+
+continueOutsideOfLoop :: (Print p, Position p) => p -> HarperOutput a
+continueOutsideOfLoop ctx = do
+    outputErr ("a `continue` statement cannot be used outside of a loop body."++) ctx
+    typeErr
+
 showsMany :: (Show a) => [a] -> ShowS
 showsMany xs = foldl' (.) id $ intersperse ("`, `" ++) $ map shows xs
 

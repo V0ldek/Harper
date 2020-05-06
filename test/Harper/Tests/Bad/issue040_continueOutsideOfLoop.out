@@ -1,0 +1,7 @@
+Error: a `continue` statement cannot be used outside of a loop body.
+During evaluation of:
+ continue ;
+
+Located at line 8 column 3
+
+Execution terminated with an error: type error.
