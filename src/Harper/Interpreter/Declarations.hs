@@ -17,6 +17,7 @@ import           Harper.Interpreter.Alloc
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Iterator
 import           Harper.Interpreter.Thunk
+import           Harper.Output
 import           Harper.TypeSystem.Core         ( ctorIdent
                                                 , thisIdent
                                                 )

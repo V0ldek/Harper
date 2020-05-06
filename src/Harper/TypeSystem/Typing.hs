@@ -79,8 +79,8 @@ getFreshTypeSubst t = do
 
 getMember :: Type -> Ident -> TypeChecker (Maybe ObjData)
 getMember t i = case t of
-    VType _ args params _     membs -> getMember' args params membs
-    RType _ args params membs _     -> getMember' args params membs
+    VType _ args params _ membs _ _ -> getMember' args params membs
+    RType _ args params membs _ _   -> getMember' args params membs
     _                               -> return Nothing
   where
     getMember' :: [Ident] -> [Type] -> OEnv -> TypeChecker (Maybe ObjData)
@@ -98,19 +98,21 @@ class Types t where
     tVars :: t -> [Ident]
 
 instance Types Type where
-    apply s v@(TypeVar i         ) = fromMaybe v (Map.lookup i s)
-    apply s v@(VType _ _ args _ _) = v { vArgs = apply s args }
-    apply s r@(RType _ _ args _ _) = r { rArgs = apply s args }
-    apply s (  FType p r         ) = FType (apply s p) (apply s r)
-    apply s (  TupType ts        ) = TupType (map (apply s) ts)
-    apply s t                      = t
+    apply s v@(TypeVar i) = fromMaybe v (Map.lookup i s)
+    apply s v@VType { vArgs = args, vIfaces = is } =
+        v { vArgs = apply s args, vIfaces = Map.map (apply s) is }
+    apply s r@RType { rArgs = args, rIfaces = is } =
+        r { rArgs = apply s args, rIfaces = Map.map (apply s) is }
+    apply s (FType p r ) = FType (apply s p) (apply s r)
+    apply s (TupType ts) = TupType (map (apply s) ts)
+    apply s t            = t
 
-    tVars (TypeVar i         ) = [i]
-    tVars (VType _ _ args _ _) = tVars args
-    tVars (RType _ _ args _ _) = tVars args
-    tVars (FType p r         ) = tVars p `union` tVars r
-    tVars (TupType ts        ) = concatMap tVars ts
-    tVars t                    = []
+    tVars (TypeVar i)            = [i]
+    tVars VType { vArgs = args } = tVars args
+    tVars RType { rArgs = args } = tVars args
+    tVars (FType p r )           = tVars p `union` tVars r
+    tVars (TupType ts)           = concatMap tVars ts
+    tVars t                      = []
 
 instance Types ObjData where
     apply s (Obj t b) = Obj (apply s t) b
@@ -121,6 +123,11 @@ instance Types TypeCtor where
     apply s ctor = ctor { flds = Map.map (apply s) (flds ctor) }
 
     tVars ctor = foldr (union . tVars) [] (Map.elems $ flds ctor)
+
+instance Types IfaceImpl where
+    apply s i = i { iArgs = apply s (iArgs i) }
+
+    tVars = tVars . iArgs
 
 instance Types a => Types [a] where
     apply s = map $ apply s
@@ -147,10 +154,18 @@ unify t1 t2 = fromMaybe
         s1 <- unify p1 p2
         s2 <- unify (apply s1 r1) (apply s1 r2)
         return $ catSubst s1 s2
-    unify' (VType i1 _ ps1 _ _) (VType i2 _ ps2 _ _) | i1 == i2 =
-        foldM accSubst Map.empty (zip ps1 ps2)
-    unify' (RType i1 _ ps1 _ _) (RType i2 _ ps2 _ _) | i1 == i2 =
-        foldM accSubst Map.empty (zip ps1 ps2)
+    unify' VType { vName = i1, vArgs = args1 } VType { vName = i2, vArgs = args2 }
+        | i1 == i2
+        = foldM accSubst Map.empty (zip args1 args2)
+    unify' RType { rName = i1, rArgs = args1 } RType { rName = i2, rArgs = args2 }
+        | i1 == i2
+        = foldM accSubst Map.empty (zip args1 args2)
+    unify' VType { vName = iface, vArgs = args1 } VType { vIfaces = is } = do
+        Iface _ args2 <- Map.lookup iface is
+        foldM accSubst Map.empty (zip args1 args2)
+    unify' RType { rName = iface, rArgs = args1 } RType { rIfaces = is } = do
+        Iface _ args2 <- Map.lookup iface is
+        foldM accSubst Map.empty (zip args1 args2)
     unify' (TupType ts1) (TupType ts2) = foldM accSubst Map.empty (zip ts1 ts2)
     unify' SEType        ImpType       = return Map.empty
     unify' t1 t2 | t1 == t2            = return Map.empty

@@ -17,9 +17,11 @@ allocs os = forM os alloc
 newlocs :: Int -> TypeChecker [Int]
 newlocs n = do
     lookup <- gets (Map.lookupMax . objData)
-    case lookup of
-        Just (l, _) -> return $ genLocsFrom (l + 1)
-        Nothing     -> return $ genLocsFrom 0
+    let ls = case lookup of
+            Just (l, _) -> genLocsFrom (l + 1)
+            Nothing     -> genLocsFrom 0
+    modifyObjData (Map.union $ Map.fromList (zip ls (repeat undefined)))
+    return ls
     where genLocsFrom l = [l .. l + n - 1]
 
 newloc :: TypeChecker Int

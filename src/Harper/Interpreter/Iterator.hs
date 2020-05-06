@@ -18,44 +18,64 @@ import           Harper.Interpreter.Thunk
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.TypeSystem.Core         ( thisIdent )
+import           Harper.TypeSystem.GlobalTypes
 
 iteratorBody :: Statement Meta -> ContExec -> Interpreter Object
 iteratorBody s exec = do
     ctor <- iteratorCtor (ValueCtor (UIdent "Iterator") (UIdent "Iterator"))
                          valueCurrentImpl
                          valueNextImpl
-    l <- alloc (Thunk $ iteratorCont s exec)
-    return $ Inst ctor (Map.fromList [(iterContI, l)])
-
+    contL      <- alloc (Thunk $ iteratorCont s exec)
+    lookupThis <- lookupObj thisIdent
+    case lookupThis of
+        Just this -> do
+            funThisL <- alloc this
+            return $ Inst
+                ctor
+                (Map.fromList [(iterContI, contL), (iterFunThisI, funThisL)])
+        Nothing -> return $ Inst ctor (Map.fromList [(iterContI, contL)])
 refIteratorBody :: Statement Meta -> ContExec -> Interpreter Object
 refIteratorBody s exec = do
     ctor <- iteratorCtor (RefCtor (UIdent "RefIterator"))
                          refCurrentImpl
                          refNextImpl
-    contL    <- alloc (Thunk $ refIteratorCont s exec)
-    contVarL <- alloc (Var $ Just contL)
-    elemVarL <- alloc (Var Nothing)
-    ref      <- alloc $ Inst
-        ctor
-        (Map.fromList [(iterContI, contVarL), (iterElemI, elemVarL)])
+    contL      <- alloc (Thunk $ refIteratorCont s exec)
+    contVarL   <- alloc (Var $ Just contL)
+    elemVarL   <- alloc (Var Nothing)
+    lookupThis <- lookupObj thisIdent
+    ref        <- case lookupThis of
+        Just this -> do
+            funThisL <- alloc this
+            alloc $ Inst
+                ctor
+                (Map.fromList
+                    [ (iterContI   , contVarL)
+                    , (iterElemI   , elemVarL)
+                    , (iterFunThisI, funThisL)
+                    ]
+                )
+        Nothing -> alloc $ Inst
+            ctor
+            (Map.fromList [(iterContI, contVarL), (iterElemI, elemVarL)])
     return $ Ref ref
 
 iteratorCtor
     :: (OEnv -> TCtor)
     -> Interpreter Object
-    -> (TCtor -> Interpreter Object)
+    -> Interpreter Object
     -> Interpreter TCtor
 iteratorCtor ctorCtor currentImpl nextImpl = do
     oenv <- asks objs
-    ls   <- newlocs 2
-    let isls = zip [iterCurrentI, iterNextI] ls
+    ls   <- newlocs 3
+    let isls = zip [iterCurrentI, iterNextI, iterateI] ls
     let t     = ctorCtor (Map.fromList isls)
-        membs = [current oenv, next t oenv]
+        membs = [current oenv, next oenv, iterate oenv]
     modifyObjs (Map.union (Map.fromList $ zip ls membs))
     return t
   where
     current = Fun [thisIdent] currentImpl
-    next iter = Fun [thisIdent] (nextImpl iter)
+    next    = Fun [thisIdent] nextImpl
+    iterate = Fun [thisIdent] iterateImpl
 
 valueCurrentImpl :: Interpreter Object
 valueCurrentImpl = do
@@ -63,8 +83,8 @@ valueCurrentImpl = do
     case Map.lookup iterElemI (_data this) of
         Just ptr -> getByPtr ptr
         Nothing  -> raise Error.iterCurrNoElem
-valueNextImpl :: TCtor -> Interpreter Object
-valueNextImpl iter = do
+valueNextImpl :: Interpreter Object
+valueNextImpl = do
     this <- getThis
     let contPtr = _data this Map.! iterContI
     cont <- getByPtr contPtr
@@ -78,8 +98,8 @@ refCurrentImpl = do
     case elemVar of
         Var (Just ptr) -> getByPtr ptr
         Var Nothing    -> raise Error.iterCurrNoElem
-refNextImpl :: TCtor -> Interpreter Object
-refNextImpl iter = do
+refNextImpl :: Interpreter Object
+refNextImpl = do
     this <- getThis
     let contVarPtr = _data this Map.! iterContI
     contVar <- getByPtr contVarPtr
@@ -87,6 +107,8 @@ refNextImpl iter = do
     cont <- getByPtr contPtr
     let Thunk t = cont
     t
+iterateImpl :: Interpreter Object
+iterateImpl = getThis
 
 iteratorCont :: Statement Meta -> ContExec -> Interpreter Object
 iteratorCont = startIterator kElem
@@ -130,7 +152,9 @@ startIterator
 startIterator kElem s exec = do
     kRet <- inCurrentScope2 kElem
     k    <- inCurrentScope $ kElem PUnit
-    exec s kRet k
+    this <- getThis
+    let funThisL = _data this Map.! iterFunThisI
+    localObjs (Map.insert thisIdent funThisL) (exec s kRet k)
 
 iterContI :: Ident
 iterContI = Ident "~cont"
@@ -138,8 +162,5 @@ iterContI = Ident "~cont"
 iterElemI :: Ident
 iterElemI = Ident "~elem"
 
-iterCurrentI :: Ident
-iterCurrentI = Ident "current"
-
-iterNextI :: Ident
-iterNextI = Ident "next"
+iterFunThisI :: Ident
+iterFunThisI = Ident "~funThis"

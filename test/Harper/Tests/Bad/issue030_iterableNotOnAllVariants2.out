@@ -1,0 +1,6 @@
+Error: expression `l` has invalid type `List Integer`; expected `Iterable a`.
+During evaluation of:
+prints l
+Located at line 43 column 8
+
+Execution terminated with an error: type error.

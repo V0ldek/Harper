@@ -1,11 +1,11 @@
-Error: the constructor of the type `RefBox a&` has an invalid type `a& -> Unit`.  The constructor must return an instance of `RefBox a&`.
+Error: the constructor of the type `RefBox a&` has an invalid type `a& -> RefBox a&`. The constructor must be an impure function returning an instance of `RefBox a&`.
 During evaluation of:
   ref RefBox a = {
       data = {
           a :: a ;
       }
 
-      ctor :: a -> () ;
+      ctor :: a -> RefBox a ;
       ctor a = {
           this.data . a := a ;
           return () ;
