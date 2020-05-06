@@ -12,16 +12,17 @@ import           Harper.Abs
 import           Harper.TypeSystem.Core
 
 instance Semigroup BlockState where
-    (BlkSt reachable1 rets1 yields1 imp1 se1 objs1) <> (BlkSt reachable2 rets2 yields2 imp2 se2 objs2)
+    (BlkSt reachable1 rets1 yields1 imp1 se1 used1 unass1) <> (BlkSt reachable2 rets2 yields2 imp2 se2 used2 unass2)
         = BlkSt (reachable1 || reachable2)
                 (rets1 ++ rets2)
                 (yields1 ++ yields2)
                 (imp1 || imp2)
                 (se1 || se2)
-                (Set.union objs1 objs2)
+                (Set.union used1 used2)
+                (Set.union unass1 unass1)
 
 instance Monoid BlockState where
-    mempty = BlkSt False [] [] False False Set.empty
+    mempty = BlkSt False [] [] False False Set.empty Set.empty
 
 modifyBlkSt :: (BlockState -> BlockState) -> TypeChecker ()
 modifyBlkSt f = modify (\st -> st { blkSt = f (blkSt st) })
@@ -33,7 +34,7 @@ getBlkSt :: TypeChecker BlockState
 getBlkSt = getsBlkSt id
 
 initialBlkSt :: BlockState
-initialBlkSt = BlkSt True [] [] False False Set.empty
+initialBlkSt = BlkSt True [] [] False False Set.empty Set.empty
 
 clearBlkSt :: TypeChecker ()
 clearBlkSt = modifyBlkSt (const initialBlkSt)
@@ -58,8 +59,20 @@ usingObj l = modifyBlkSt (\st -> st { usedObjs = Set.insert l (usedObjs st) })
 visibleObjs :: TypeChecker (Set.Set Ptr)
 visibleObjs = asksObjs (Set.fromList . Map.elems)
 
+unassignedObj :: Ptr -> TypeChecker ()
+unassignedObj l =
+    modifyBlkSt (\st -> st { unassObjs = Set.insert l (unassObjs st) })
+
+assignObj :: Ptr -> TypeChecker ()
+assignObj l =
+    modifyBlkSt (\st -> st { unassObjs = Set.delete l (unassObjs st) })
+
+isDefAssigned :: Ptr -> TypeChecker Bool
+isDefAssigned l = getsBlkSt ((not . Set.member l) . unassObjs)
+
 unreachable :: TypeChecker ()
-unreachable = modifyBlkSt (\st -> st { reachable = False })
+unreachable =
+    modifyBlkSt (\st -> st { reachable = False, unassObjs = Set.empty })
 
 impure :: TypeChecker ()
 impure = modifyBlkSt (\st -> st { isImpure = True })
@@ -70,7 +83,9 @@ sideeffect = modifyBlkSt (\st -> st { hasSideeffects = True })
 mayEnterOneOf :: [BlockState] -> TypeChecker ()
 mayEnterOneOf bs = do
     let b = mconcat bs
-    modifyBlkSt (\st -> (st <> b) { reachable = reachable st })
+    modifyBlkSt
+        (\st -> (st <> b) { reachable = reachable st, unassObjs = unassObjs st }
+        )
 
 mustEnterOneOf :: [BlockState] -> TypeChecker ()
 mustEnterOneOf bs = do

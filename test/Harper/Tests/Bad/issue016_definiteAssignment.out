@@ -1,6 +1,6 @@
 Error: variable `x` is not definitely assigned at point of use.
 During evaluation of:
- x
-Located at line 4 column 22
+  x
+Located at line 4 column 10
 
 Execution terminated with an error: type error.

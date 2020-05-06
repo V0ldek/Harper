@@ -202,6 +202,8 @@ annotateExpr e@(ObjExpr a i) = do
     lookup <- asksObjs (Map.lookup i)
     case lookup of
         Just ptr -> do
+            defAss <- isDefAssigned ptr
+            unless defAss (raise $ Error.varNotDefAss i e)
             usingObj ptr
             o <- getByPtr ptr
             return $ ObjExpr (annWith (objType o) a) i
@@ -673,8 +675,9 @@ annotateBody body initSt = case body of
         ptrs <- visibleObjs
         let captures = Set.intersection ptrs (usedObjs blkSt)
         impureCaptures <- getsObjData
-            (\m -> Map.filter (\(Obj t ass) -> ass || isTypeImpure t)
-                $ Map.restrictKeys m captures
+            (\m ->
+                Map.filter (\(Obj t ass) -> ass || isTypeImpure t)
+                    $ Map.restrictKeys m captures
             )
         unless (Map.null impureCaptures) impure
 
@@ -684,7 +687,8 @@ analStmt (StmtBlock a []      ) = return $ StmtBlock (annWith unitT a) []
 analStmt (StmtBlock a (s : ss)) = case s of
     (DeclStmt a decl) -> do
         (decl', oenv) <- declare decl
-        blk           <- localObjs (Map.union oenv) (analStmt $ StmtBlock a ss)
+        forM_ (Map.elems oenv) unassignedObj
+        blk <- localObjs (Map.union oenv) (analStmt $ StmtBlock a ss)
         let StmtBlock _ ss' = blk
         return $ StmtBlock (annWith unitT a)
                            (DeclStmt (annWith unitT a) decl' : ss')
@@ -847,11 +851,16 @@ analAss
     -> p
     -> TypeChecker (Expression (TypeMetaData Pos))
 analAss i e ctx = do
-    lookup <- lookupObj i
+    lookup <- asksObjs (Map.lookup i)
     case lookup of
-        Just o | assignable o -> assignTo o e ctx
-        Just o                -> raise $ Error.assToValue i ctx
-        Nothing               -> raise $ Error.undeclaredIdent i ctx
+        Just ptr -> do
+            o <- getByPtr ptr
+            if assignable o
+                then do
+                    assignObj ptr
+                    assignTo o e ctx
+                else raise $ Error.assToValue i ctx
+        Nothing -> raise $ Error.undeclaredIdent i ctx
 
 analDataAss
     :: (Print p, Position p)
