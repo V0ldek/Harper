@@ -36,7 +36,7 @@ import           OutputM
 
 runInterpreter :: Program Meta -> HarperOutput ShowS
 runInterpreter tree = evalStateT
-    (runReaderT (interpret tree) (Env Map.empty Map.empty))
+    (runReaderT (interpret tree) (Env Map.empty Map.empty Nothing Nothing))
     (St Map.empty 0)
 
 interpret :: Program Meta -> Interpreter ShowS
@@ -47,7 +47,7 @@ interpret (Prog _ ds) = do
     userEnv <- localObjs (const globals) (funDecls fds call exec)
     let oenv = Map.union userEnv globals
     tenv <- localObjs (const oenv) (typeDecls call exec tds)
-    let env = Env oenv tenv
+    let env = Env oenv tenv Nothing Nothing
     o <- local (const env) runMain
     printObj o
 
@@ -373,8 +373,24 @@ exec (YieldStmt _ e) kRet k = do
     o  <- eval e
     k' <- inCurrentScope k
     kRet (Tup [o, Thunk k'])
-exec (YieldRetStmt _) kRet _ = kRet PUnit
-exec (CondStmt _ c  ) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
+exec (  YieldRetStmt _) kRet _ = kRet PUnit
+exec s@(BrkStmt      _) _    _ = do
+    kBrk <- asks loopBrk
+    fromMaybe
+        (error
+        $ "Brk encountered, but no brk continuation. Type check should've caught this."
+        ++ show s
+        )
+        kBrk
+exec s@(CntStmt _) _ _ = do
+    kCnt <- asks loopCnt
+    fromMaybe
+        (error
+        $ "Cnt encountered, but no cnt continuation. Type check should've caught this."
+        ++ show s
+        )
+        kCnt
+exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
   where
     -- Executes a linear conditional. 
     -- Looks for the first if with a predicate evaluating to true and executes that branch.
@@ -393,7 +409,11 @@ exec (CondStmt _ c  ) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
 exec w@(WhileStmt _ pred s) kRet k = do
     o <- eval pred
     case o of
-        PBool True  -> exec s kRet (exec w kRet k)
+        PBool True -> do
+            k'    <- inCurrentScope k
+            kRet' <- inCurrentScope2 kRet
+            let rep = exec w kRet' k'
+            localLoop k' rep (exec s kRet' rep)
         PBool False -> k
         o ->
             error
@@ -417,8 +437,9 @@ exec f@(ForInVStmt a pat e s) kRet k = do
         currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
         iterInit =
             DconStmt a (PatDecl a (LocVarDecl a (Decl a iterVar))) iterateAccess
-        hasNextDecl = DeclStmt a (LocVarDecl a (Decl a hasNextVar))
-        updateStmt  = DconStmt
+        hasNextDecl =
+            DconStmt a (PatDecl a (LocVarDecl a (Decl a hasNextVar))) litTrue
+        updateStmt = DconStmt
             a
             (PatTup
                 a
@@ -428,19 +449,20 @@ exec f@(ForInVStmt a pat e s) kRet k = do
                 )
             )
             nextAccess
-        updateIter = AssStmt a iterVar iter'
+        updateIter    = AssStmt a iterVar iter'
         updateHasNext = AssStmt a hasNextVar hasNext'
         initStmt = DconStmt a pat (MembExpr a iter [MembAcc a iterCurrentI])
-        whileBody =
-            StmtBlock a [initStmt, s, updateStmt, updateIter, updateHasNext]
+        checkBreak    = CondStmt
+            a
+            (IfElifStmts a (IfStmt a (NotExpr a hasNext') (BrkStmt a)) [])
+        whileBody = StmtBlock
+            a
+            [updateStmt, checkBreak, updateIter, updateHasNext, initStmt, s]
         whileStmt = WhileStmt a hasNext whileBody
         block     = StmtBlock
             a
             [ iterInit
             , hasNextDecl
-            , updateStmt
-            , updateIter
-            , updateHasNext
             , whileStmt
             ]
     exec block kRet k

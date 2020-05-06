@@ -23,7 +23,9 @@ type TEnv = Map.Map UIdent TCtor
 type ObjStore = Map.Map Ptr Object
 data Store = St { objStore  :: ObjStore, varSrc :: Int } deriving Show
 data Env = Env { objs :: OEnv,
-                 types :: TEnv } deriving Show
+                 types :: TEnv,
+                 loopCnt :: Maybe (Interpreter Object),
+                 loopBrk :: Maybe (Interpreter Object) }
 
 type Interpreter = ReaderT Env (StateT Store (Output ShowS))
 
@@ -85,6 +87,11 @@ showData d =
 
 localObjs :: (OEnv -> OEnv) -> Interpreter a -> Interpreter a
 localObjs f = local (\env -> env { objs = f $ objs env })
+
+localLoop
+  :: Interpreter Object -> Interpreter Object -> Interpreter a -> Interpreter a
+localLoop kBrk kCnt =
+  local (\env -> env { loopBrk = Just kBrk, loopCnt = Just kCnt })
 
 asksTypes :: (TEnv -> a) -> Interpreter a
 asksTypes f = asks (f . types)
