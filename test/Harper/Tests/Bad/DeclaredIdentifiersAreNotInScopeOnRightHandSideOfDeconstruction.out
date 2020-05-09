@@ -1,6 +1,6 @@
 Error: undeclared identifier `f`.
 During evaluation of:
  f
-Located at line 4 column 21
+Located at line 7 column 21
 
 Execution terminated with an error: type error.

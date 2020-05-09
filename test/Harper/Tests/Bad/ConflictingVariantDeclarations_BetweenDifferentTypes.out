@@ -1,0 +1,25 @@
+Error: conflicting type variant names `Empty`.
+Conflicting declarations:
+value List a = {
+  variant Empty = {
+    } ;
+  }
+
+Located at line 1 column 1
+value Bag a b c d = {
+  variant Empty = {
+    } ;
+  variant Bag = {
+    data = {
+      a :: a ;
+      a :: b ;
+      c :: c ;
+      c :: d ;
+      }
+    } ;
+  }
+
+Located at line 5 column 1
+
+
+Execution terminated with an error: type error.
