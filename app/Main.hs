@@ -35,7 +35,7 @@ putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
 runFile :: Verbosity -> ParseFun (Program Pos) -> FilePath -> IO ()
-runFile v p f = putStrLn f >> readFile f >>= run v p
+runFile v p f = readFile f >>= run v p
 
 run :: Verbosity -> ParseFun (Program Pos) -> String -> IO ()
 run v p s =
@@ -49,13 +49,13 @@ run v p s =
                 putStrLn s
                 exitFailure
             Ok tree -> do
-                putStrLn "\nParse Successful!"
+                putStrV v "\nParse Successful!"
                 showTree v tree
                 let Out out res = runTypeChecker tree
                 putStrLn $ out ""
                 case res of
                     Ok tree' -> do
-                        putStrLn "\nType check successful."
+                        putStrV v "\nType check successful."
                         showTree v tree'
                         let Out out res = runInterpreter tree'
                         putStrLn $ out ""
@@ -83,9 +83,10 @@ usage = do
     putStrLn $ unlines
         [ "usage: Call with one of the following argument combinations:"
         , "  --help          Display this help message."
-        , "  (no arguments)  Parse stdin verbosely."
-        , "  (files)         Parse content of files verbosely."
-        , "  -s (files)      Silent mode. Parse content of files silently."
+        , "  (no arguments)  Run stdin silently."
+        , "  -v              Run stdin verbosely."
+        , "  (file)          Run content of a file silently."
+        , "  -v (file)       Run content of a file verbosely."
         ]
     exitFailure
 
@@ -94,6 +95,8 @@ main = do
     args <- getArgs
     case args of
         ["--help"] -> usage
-        []         -> getContents >>= run 2 pProgram
-        "-s" : fs  -> mapM_ (runFile 0 pProgram) fs
-        fs         -> mapM_ (runFile 2 pProgram) fs
+        []         -> getContents >>= run 0 pProgram
+        ["-v"]     -> getContents >>= run 2 pProgram
+        ["-v", f]  -> runFile 2 pProgram f
+        [f]        -> runFile 0 pProgram f
+        _          -> usage
