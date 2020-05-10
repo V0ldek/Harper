@@ -306,6 +306,7 @@ patDeclIs p = case p of
     PatData _ flds   -> concatMap fldDeclIs flds
     PatDisc _        -> []
     PatCtor _ _ flds -> concatMap fldDeclIs flds
+    PatTup _ tup     -> concatMap patDeclIs (patTupToList tup)
     where fldDeclIs (PatFld _ _ p) = patDeclIs p
 
 parseType :: TypeExpr Pos -> TypeChecker Type

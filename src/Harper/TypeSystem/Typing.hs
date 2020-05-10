@@ -9,6 +9,7 @@ module Harper.TypeSystem.Typing
     , bindAllVarsInOEnv
     , getFreshValInst
     , getFreshRefInst
+    , getFreshTypeSubst
     , getMember
     , Subst
     , Types(..)

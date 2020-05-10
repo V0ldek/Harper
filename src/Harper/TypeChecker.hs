@@ -206,7 +206,9 @@ annotateExpr e@(ObjExpr a i) = do
             unless defAss (raise $ Error.varNotDefAss i e)
             usingObj ptr
             o <- getByPtr ptr
-            return $ ObjExpr (annWith (objType o) a) i
+            let t = objType o
+            subst <- getFreshTypeSubst t
+            return $ ObjExpr (annWith (apply subst t) a) i
         Nothing -> raise $ Error.undeclaredIdent i e
 
 -- Function application.
