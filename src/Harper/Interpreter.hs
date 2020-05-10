@@ -1,7 +1,5 @@
 module Harper.Interpreter
     ( runInterpreter
-    , eval
-    , apply
     )
 where
 import           Control.Monad
@@ -16,22 +14,26 @@ import           Data.List
 import           Harper.Abs
 import           Harper.Abs.Pos
 import           Harper.Abs.Tuple
+import           Harper.Abs.Typed
+import qualified Harper.Error                  as Error
+import           Harper.Expressions
 import           Harper.Interpreter.Alloc
-import           Harper.Printer
 import           Harper.Interpreter.Conditionals
 import           Harper.Interpreter.Core
 import           Harper.Interpreter.Declarations
+import           Harper.Interpreter.Iterable
 import           Harper.Interpreter.Iterator
-import           Harper.Expressions
+import           Harper.Interpreter.NativeObjects
+import           Harper.Interpreter.PatternMatching
+import           Harper.Interpreter.Print
 import           Harper.Interpreter.Thunk
-import qualified Harper.Error                  as Error
 import           Harper.Output
+import           Harper.Printer
 import           Harper.TypeSystem.Core         ( TypeCtor(..)
                                                 , ctorIdent
                                                 , thisIdent
                                                 )
 import           Harper.TypeSystem.GlobalTypes
-import           Harper.Abs.Typed
 import           OutputM
 
 runInterpreter :: Program Meta -> HarperOutput ShowS
@@ -61,7 +63,7 @@ runMain = do
         Just _                           -> raise Error.invMainType
         Nothing                          -> raise Error.undeclaredMain
 
-eval :: Expression Meta -> Interpreter Object
+eval :: Eval
 
 -- Literals
 
@@ -70,6 +72,8 @@ eval (LitExpr _ (BoolLit _ (BTrue  _))) = return $ PBool True
 eval (LitExpr _ (BoolLit _ (BFalse _))) = return $ PBool False
 eval (LitExpr _ (StrLit  _ s         )) = return $ PStr (unescape s)
   where
+    -- BNFC automatically escapes control sequences, so "\n" in code becomes "\\n" in Haskell.
+    -- But we want "\n" to be "\n" in Harper, so we unescape on string evaluation.
     unescape [] = []
     unescape s  = let [(esc, s')] = readLitChar s in esc : unescape s'
 eval (  LitExpr _ (CharLit _ c)) = return $ PChar c
@@ -78,15 +82,11 @@ eval (  LitExpr _ (UnitLit _  )) = return PUnit
 -- Value construction.
 
 eval e@(VCtorExpr _ ctor flds  ) = do
-    lookup <- asksTypes (Map.lookup ctor)
-    case lookup of
-        Just t@ValueCtor{} -> do
+    t <- getType ctor
+    case t of
+        ValueCtor{} -> do
             _data <- mapM fldAssToData flds
             return $ Inst t (Map.fromList _data)
-        Nothing ->
-            error
-                $  "Undeclared ctor. Type check should've caught this."
-                ++ show e
   where
     fldAssToData (DataAss _ i e) = do
         (ptr, _) <- makeThunk e eval
@@ -102,17 +102,11 @@ eval (TupExpr _ tup) = do
 -- Object access.
 
 eval e@(ObjExpr _ i) = do
-    lookup <- lookupObj i
-    case lookup of
-        Just o -> do
-            mo' <- evalObj o
-            case mo' of
-                Just o' -> return o'
-                Nothing -> raise $ Error.unassVar i e
-        Nothing ->
-            error
-                $  "Undeclared ident. Type check should've caught this."
-                ++ show e
+    o   <- getObj i
+    mo' <- evalObj o
+    case mo' of
+        Just o' -> return o'
+        Nothing -> raise $ Error.unassVar i e
 
 -- Function application.
 
@@ -129,9 +123,9 @@ eval (SeqExpr _ e1 e2) = do
 -- Lambda expressions.
 
 eval e@(LamExpr a params body) = do
-    env <- asks objs
     let n = length params
-    ps <- newvars n
+    env <- asks objs
+    ps  <- newvars n
     let body' = case body of
             FExprBody  a e -> call $ RetExprStmt a e
             FStmtBody  _ s -> call s
@@ -140,7 +134,8 @@ eval e@(LamExpr a params body) = do
         pats = [ p | LamParam _ p <- params ]
     return $ Fun ps (matchAll (zip ps pats) body') env
   where
-    matchAll ((p, pat) : ps) body = patMatch
+    matchAll ((p, pat) : ps) body = patMatchExpr
+        eval
         pat
         (ObjExpr a p)
         (matchAll ps body)
@@ -152,7 +147,7 @@ eval e@(LamExpr a params body) = do
 eval m@(MatchExpr _ e cs) = evalMatches e cs
   where
     evalMatches o (MatchExprClause _ p e : cs) =
-        patMatch p o (eval e) (evalMatches o cs)
+        patMatchExpr eval p o (eval e) (evalMatches o cs)
     evalMatches _ [] = raise $ Error.nonExhPatMatch m
 
 -- Integer operators.
@@ -168,10 +163,6 @@ eval e'@(NegExpr a e) = do
     o <- eval e
     case o of
         PInt n -> return $ PInt (-n)
-        _ ->
-            error
-                $ "Invalid type in negation. Type check should have caught this. "
-                ++ show e'
 
 -- Equations.
 
@@ -196,15 +187,6 @@ eval e@(AndExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _ ->
-                        error
-                            $ "Invalid type in and expression. Type check should have caught this. "
-                            ++ show e
-        _ ->
-            raise
-                $ error
-                $ "Invalid type in and expression. Type check should have caught this. "
-                ++ show e
 eval e@(OrExpr _ e1 e2) = do
     o1 <- eval e1
     case o1 of
@@ -214,22 +196,10 @@ eval e@(OrExpr _ e1 e2) = do
                 o2 <- eval e2
                 case o2 of
                     PBool b2 -> return $ PBool b2
-                    _ ->
-                        error
-                            $ "Invalid type in or expression. Type check should have caught this. "
-                            ++ show e
-        _ ->
-            error
-                $ "Invalid type in or expression. Type check should have caught this. "
-                ++ show e
 eval e'@(NotExpr _ e) = do
     o <- eval e
     case o of
         PBool b -> return $ PBool $ not b
-        _ ->
-            error
-                $ "Invalid type in not expression. Type check should have caught this. "
-                ++ show e
 
 -- Member access.
 
@@ -240,20 +210,13 @@ eval e@(MembExpr _ e' acc) = do
 eval e@(TMembExpr _ _ []) =
     error
         "Type member access with an empty access list. Grammar should disallow this."
-
 eval e@(TMembExpr _ tName (MembAcc _ i : acc)) | i == ctorIdent = do
-    t <- asksTypes (Map.! tName)
+    t <- getType tName
     case t of
         RefCtor _ membs -> do
             let ctorPtr = membs Map.! i
-            ctor <- getsObjs (Map.! ctorPtr)
+            ctor <- getByPtr ctorPtr
             evalAcc ctor acc e
-        _ ->
-            error
-                $ "Non reference type asked for ctor. Type check should've caught this. "
-                ++ show t
-                ++ " "
-                ++ show e
 eval e@(TMembExpr _ _ (a : acc)) = do
     env <- asks objs
     let o = Fun [thisIdent] accBody env in evalAcc o acc e
@@ -264,20 +227,13 @@ eval e@(TMembExpr _ _ (a : acc)) = do
 
 -- This identifier.
 
-eval (ThisExpr _) = do
-    lookup <- lookupObj thisIdent
-    case lookup of
-        Just o -> return o
-        Nothing ->
-            error
-                "`this` was not passed as a first argument. This should be impossible."
+eval (ThisExpr _) = getObj thisIdent
 
 eval (DataExpr _ []) =
     error "Data access with an empty access list. Grammar should disallow this."
 eval e@(DataExpr a (MembAcc _ i : acc)) = do
     inst <- getThis
-    let flds   = _data inst
-        fldPtr = flds Map.! i
+    let fldPtr = _data inst Map.! i
     fld <- getByPtr fldPtr
     mo  <- evalObj fld
     case mo of
@@ -304,23 +260,10 @@ evalAcc o (e@(MembAcc _ i) : acc) ctx = do
         Just (Ref ptr) -> do
             o <- getByPtr ptr
             let Inst (RefCtor tName membs) _ = o
-            case Map.lookup i membs of
-                Just ptr -> continueAccess ptr
-                Nothing ->
-                    error
-                        $  "Type "
-                        ++ show tName
-                        ++ " has no member "
-                        ++ show i
-                        ++ " used in member access. Type check should've caught this."
-                        ++ show e
-        _ ->
-            error
-                $ "A non-instance was used in member access. Type check should've caught this."
-                ++ show mo'
+            continueAccess (membs Map.! i)
   where
     continueAccess ptr = do
-        memb <- getsObjs (Map.! ptr)
+        memb <- getByPtr ptr
         mo'  <- evalObj memb
         case mo' of
             Just (Fun (p : ps) body env) -> do
@@ -336,7 +279,7 @@ evalAcc o (e@(MembAcc _ i) : acc) ctx = do
                     ++ show o'
             Nothing -> raise $ Error.unassVar i e
 
-apply :: Object -> Expression Meta -> Interpreter Object
+apply :: Object -> Eval
 apply (Fun (p : ps) s env) argV = do
     (ptr, _) <- makeThunk argV eval
     let env' = Map.insert p ptr env
@@ -346,16 +289,17 @@ apply (Fun (p : ps) s env) argV = do
 apply (Fun [] s env) (LitExpr _ (UnitLit _)) = localObjs (const env) s
 apply o              _                       = return o
 
-call :: Statement Meta -> Interpreter Object
+call :: Call
 call s = exec s return f where f = return PUnit
 
 -- Execution uses continuation-passing-style to implement control flow. 
 -- Since statements can only be executed in a body of a function, they take at least two continuations:
 -- the "return value" continuation and execution continuation. Calling the kRet short-circuits back to
 -- the place of call. Using k continues the execution to the next statement.
-exec :: ContExec
+exec :: Exec
 exec (EmptyStmt _   ) _    k = k
 exec (StmtBlock a ss) kRet k = do
+    -- Scoping - make sure the continuations run in the scope from before entering the block.
     k'    <- inCurrentScope k
     kRet' <- inCurrentScope2 kRet
     execSeq ss kRet' k'
@@ -365,11 +309,9 @@ exec (StmtBlock a ss) kRet k = do
 
 -- Control flow.
 
-exec (RetExprStmt _ e) kRet _ = do
-    o <- eval e
-    kRet o
-exec (RetStmt _    ) kRet _ = kRet PUnit
-exec (YieldStmt _ e) kRet k = do
+exec (RetExprStmt _ e) kRet _ = eval e >>= kRet
+exec (RetStmt _      ) kRet _ = kRet PUnit
+exec (YieldStmt _ e  ) kRet k = do
     o  <- eval e
     k' <- inCurrentScope k
     kRet (Tup [o, Thunk k'])
@@ -400,12 +342,6 @@ exec (CondStmt _ c) kRet k = let ifs = linearizeCond c in execIfs ifs kRet k
         case o of
             PBool True  -> exec stmt kRet k
             PBool False -> execIfs ifs kRet k
-            o ->
-                error
-                    $ "Invalid type of if predicate. Type check should have caught this. "
-                    ++ show c
-                    ++ " "
-                    ++ show o
 exec w@(WhileStmt _ pred s) kRet k = do
     o <- eval pred
     case o of
@@ -415,72 +351,12 @@ exec w@(WhileStmt _ pred s) kRet k = do
             let rep = exec w kRet' k'
             localLoop k' rep (exec s kRet' rep)
         PBool False -> k
-        o ->
-            error
-                $ "Invalid type of while predicate. Type check should have caught this. "
-                ++ show w
-                ++ " "
-                ++ show o
--- See issue #30 for these semantics written in Harper instead of raw AST.
-exec f@(ForInVStmt a pat e s) kRet k = do
-    vars <- newvars 4
-    let iterVar       = vars !! 0
-        hasNextVar    = vars !! 1
-        iter'Var      = vars !! 2
-        hasNext'Var   = vars !! 3
-        iter          = ObjExpr a iterVar
-        hasNext       = ObjExpr a hasNextVar
-        iter'         = ObjExpr a iter'Var
-        hasNext'      = ObjExpr a hasNext'Var
-        iterateAccess = MembExpr a e [MembAcc a iterateI]
-        nextAccess    = MembExpr a iter [MembAcc a iterNextI]
-        currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
-        iterInit =
-            DconStmt a (PatDecl a (LocVarDecl a (Decl a iterVar))) iterateAccess
-        hasNextDecl =
-            DconStmt a (PatDecl a (LocVarDecl a (Decl a hasNextVar))) litTrue
-        updateStmt = DconStmt
-            a
-            (PatTup
-                a
-                (PatTupTail a
-                            (PatDecl a (LocValDecl a (Decl a hasNext'Var)))
-                            (PatDecl a (LocValDecl a (Decl a iter'Var)))
-                )
-            )
-            nextAccess
-        updateIter    = AssStmt a iterVar iter'
-        updateHasNext = AssStmt a hasNextVar hasNext'
-        initStmt = DconStmt a pat (MembExpr a iter [MembAcc a iterCurrentI])
-        checkBreak    = CondStmt
-            a
-            (IfElifStmts a (IfStmt a (NotExpr a hasNext') (BrkStmt a)) [])
-        whileBody = StmtBlock
-            a
-            [updateStmt, checkBreak, updateIter, updateHasNext, initStmt, s]
-        whileStmt = WhileStmt a hasNext whileBody
-        block     = StmtBlock
-            a
-            [ iterInit
-            , hasNextDecl
-            , whileStmt
-            ]
-    exec block kRet k
-exec f@(ForInRStmt a pat e s) kRet k = do
-    iterVar <- newvar
-    let iter          = ObjExpr a iterVar
-        iterateAccess = MembExpr a e [MembAcc a iterateI]
-        nextAccess    = MembExpr a iter [MembAcc a iterNextI]
-        currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
-        unit          = LitExpr a (UnitLit a)
-        pred          = AppExpr a nextAccess unit
-        iterInit =
-            DconStmt a (PatDecl a (LocValDecl a (Decl a iterVar))) iterateAccess
-        initStmt  = DconStmt a pat (AppExpr a currentAccess unit)
-        whileBody = StmtBlock a [initStmt, s]
-        whileStmt = WhileStmt a pred whileBody
-        block     = StmtBlock a [iterInit, whileStmt]
-    exec block kRet k
+exec f@ForInVStmt{} kRet k = do
+    body <- forInIterable f
+    exec body kRet k
+exec f@ForInRStmt{} kRet k = do
+    body <- forInRefIterable f
+    exec body kRet k
 
 exec f@ForInStmt{} _ _ =
     error
@@ -489,7 +365,7 @@ exec f@ForInStmt{} _ _ =
 exec m@(MatchStmt _ e cs) kRet k = execMatches e cs
   where
     execMatches e (MatchStmtClause _ p s : cs) =
-        patMatch p e (exec s kRet k) (execMatches e cs)
+        patMatchExpr eval p e (exec s kRet k) (execMatches e cs)
     execMatches _ [] = raise $ Error.nonExhPatMatch m
 
 -- Declarations.
@@ -498,20 +374,20 @@ exec (DeclStmt _ decl) _ k = do
     oenv <- declLocalUnass decl
     localObjs (const oenv) k
 exec d@(DconStmt _ pat e) _ k =
-    patMatch pat e k (raise $ Error.nonExhPatMatch d)
+    patMatchExpr eval pat e k (raise $ Error.nonExhPatMatch d)
 
 -- Assignment.
 
 exec s@(AssStmt _ i e) kRet k = do
-    l <- asksObjs (Map.! i)
-    o <- getByPtr l
+    ptr <- asksObjs (Map.! i)
+    o   <- getByPtr ptr
     case o of
         Var (Just ptr) -> do
             _ <- emplaceThunk ptr e eval
             k
         Var Nothing -> do
-            (ptr, _) <- makeThunk e eval
-            modifyObjs (Map.insert l (Var $ Just ptr))
+            (tPtr, _) <- makeThunk e eval
+            modifyObjs (Map.insert ptr (Var $ Just tPtr))
             k
         o ->
             error
@@ -530,8 +406,7 @@ exec (PowStmt a i e) kRet k =
 
 exec s@(DataAssStmt _ i e) kRet k = do
     inst <- getThis
-    let flds   = _data inst
-        fldPtr = flds Map.! i
+    let fldPtr = _data inst Map.! i
     fld <- getByPtr fldPtr
     case fld of
         Var (Just ptr) -> do
@@ -564,7 +439,7 @@ exec s _ _ =
     error
         ("Executing this type of statements is not implemented yet: " ++ show s)
 
-evalIntBinOp :: Expression Meta -> Interpreter Object
+evalIntBinOp :: Eval
 evalIntBinOp e = do
     let (op, e1, e2, cfz) = case e of
             AddExpr _ e1 e2 -> ((+), e1, e2, False)
@@ -579,14 +454,8 @@ evalIntBinOp e = do
         (PInt n1, PInt n2) -> do
             when (cfz && n2 == 0) (raise $ Error.divByZero e2 e)
             return $ PInt $ n1 `op` n2
-        ts ->
-            error
-                $ "Invalid type in binary integer operator. Type check should have caught this. "
-                ++ show e
-                ++ " "
-                ++ show ts
 
-evalEqOp :: Expression Meta -> Interpreter Object
+evalEqOp :: Eval
 evalEqOp e = do
     let (s, e1, e2) = case e of
             EqExpr  _ e1 e2 -> (id, e1, e2)
@@ -600,14 +469,8 @@ evalEqOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 == s2
         (PChar c1, PChar c2) -> f $ c1 == c2
         (PUnit   , PUnit   ) -> f True
-        ts ->
-            error
-                $ "Invalid types in eq operator. Type check should have caught this. "
-                ++ show e
-                ++ " "
-                ++ show ts
 
-evalCmpOp :: Expression Meta -> Interpreter Object
+evalCmpOp :: Eval
 evalCmpOp e = do
     let (s, e1, e2) = case e of
             LEqExpr _ e1 e2 -> (\o -> o == LT || o == EQ, e1, e2)
@@ -622,134 +485,3 @@ evalCmpOp e = do
         (PStr  s1, PStr s2 ) -> f $ s1 `compare` s2
         (PChar c1, PChar c2) -> f $ c1 `compare` c2
         (PUnit   , PUnit   ) -> f EQ
-        ts ->
-            error
-                $ "Invalid types in cmp operator. Type check should have caught this. "
-                ++ show e
-                ++ " "
-                ++ show ts
-
--- Continuation passing style - kMatch is called when object matches the pattern, kElse otherwise.
-patMatch
-    :: Pattern Meta
-    -> Expression Meta
-    -> Interpreter a
-    -> Interpreter a
-    -> Interpreter a
-patMatch PatDisc{}  _ kMatch _     = kMatch
-patMatch p@PatLit{} e kMatch kElse = do
-    o <- eval e
-    patMatch' p o kMatch kElse
-patMatch p@PatTup{} e kMatch kElse = do
-    o <- eval e
-    patMatch' p o kMatch kElse
-patMatch (PatDecl _ decl) e kMatch _ = do
-    env <- declLocal decl e eval
-    localObjs (const env) kMatch
-patMatch p@PatCtor{} e kMatch kElse = do
-    o <- eval e
-    patMatch' p o kMatch kElse
-patMatch p _ _ _ =
-    error $ "Pattern matching this type of patterns is unsupported: " ++ show p
-
-patMatch'
-    :: Pattern Meta -> Object -> Interpreter a -> Interpreter a -> Interpreter a
-patMatch' PatDisc{}      _ kMatch _     = kMatch
-patMatch' (PatLit _ lit) o kMatch kElse = do
-    o' <- evalObj o
-    case (lit, o') of
-        (IntLit _ n1, Just (PInt n2)) | n1 == n2   -> kMatch
-        (BoolLit _ (BTrue  _), Just (PBool True) ) -> kMatch
-        (BoolLit _ (BFalse _), Just (PBool False)) -> kMatch
-        (CharLit _ c1, Just (PChar c2)) | c1 == c2 -> kMatch
-        (StrLit _ s1, Just (PStr s2)) | s1 == s2   -> kMatch
-        (UnitLit _, Just PUnit)                    -> kMatch
-        _                                          -> kElse
-patMatch' (PatTup _ tup) o kMatch kElse = do
-    let pats = patTupToList tup
-    o' <- evalObj o
-    case o' of
-        Just (Tup os) | length os == length pats ->
-            patMatchSeq pats os kMatch kElse
-        _ -> kElse
-  where
-    patMatchSeq [] [] kMatch _ = kMatch
-    patMatchSeq (pat : pats) (o : os) kMatch kElse =
-        patMatch' pat o (patMatchSeq pats os kMatch kElse) kElse
-patMatch' (PatDecl _ decl) o kMatch _ = do
-    l   <- alloc o
-    env <- declLocal' decl l
-    localObjs (const env) kMatch
-patMatch' p@(PatCtor _ c flds) o kMatch kElse = do
-    o' <- evalObj o
-    case o' of
-        Just v@(Inst t _) | ctorName t == c -> matchFlds v flds kMatch kElse
-        _ -> kElse
-  where
-    matchFlds v@(Inst t d) (PatFld _ i p : flds) kMatch kElse =
-        case Map.lookup i d of
-            Just l -> do
-                o <- getsObjs (Map.! l)
-                patMatch' p o (matchFlds v flds kMatch kElse) kElse
-            Nothing ->
-                error
-                    $  "Invalid fld access. Type check should've caught this."
-                    ++ show p
-    matchFlds v [] kMatch _ = kMatch
-patMatch' p _ _ _ =
-    error $ "Pattern matching this type of patterns is unsupported: " ++ show p
-
-printObj :: Object -> Interpreter ShowS
-printObj p@PInt{}  = return $ shows p
-printObj p@PBool{} = return $ shows p
-printObj p@PStr{}  = return $ shows p
-printObj p@PChar{} = return $ shows p
-printObj PUnit     = return $ shows PUnit
-printObj (Tup os)  = do
-    ss <- mapM printObj os
-    let s = foldr (.) id (intersperse (", " ++) ss)
-    return $ showParen True s
-printObj (Thunk t) = do
-    o <- t
-    printObj o
-printObj (Var (Just ptr)) = do
-    o <- getsObjs (Map.! ptr)
-    printObj o
-printObj (Inst t d) = do
-    ss <- mapM showFld (Map.toList d)
-    let s = foldr (.) id (intersperse (" " ++) ss)
-    return $ shows t . (" { " ++) . s . (" }" ++)
-  where
-    showFld (i, ptr) = do
-        o <- getsObjs (Map.! ptr)
-        s <- printObj o
-        return $ showsPrt i . (": " ++) . s
-printObj Fun{} = return ("<fun>" ++)
-
--- Native functions.
-
-nativeObjs :: Interpreter OEnv
-nativeObjs = do
-    let (is, objs) = unzip decls
-        n          = length is
-    ls <- newlocs n
-    let lsobjs = zip ls objs
-    modifyObjs (Map.union $ Map.fromList lsobjs)
-    return $ Map.fromList (zip is ls)
-  where
-    p1 = Ident "a"
-    se = Ident "()"
-    decls =
-        [ (Ident "print"  , Fun [p1, se] printBody Map.empty)
-        , (Ident "printLn", Fun [p1, se] printLnBody Map.empty)
-        ]
-    printBody = do
-        o <- getObj p1
-        s <- printObj o
-        raise $ output s
-        return PUnit
-    printLnBody = do
-        o <- getObj p1
-        s <- printObj o
-        raise $ output (s . ("\n" ++))
-        return PUnit

@@ -30,8 +30,8 @@ data Env = Env { objs :: OEnv,
 type Interpreter = ReaderT Env (StateT Store (Output ShowS))
 
 type Eval = Expression Meta -> Interpreter Object
-type Exec = Statement Meta -> Interpreter Object
-type ContExec
+type Call = Statement Meta -> Interpreter Object
+type Exec
   =  Statement Meta
   -> (Object -> Interpreter Object)
   -> Interpreter Object
@@ -66,24 +66,23 @@ instance Show Object where
   show (PStr  s    ) = s
   show (PChar c    ) = show c
   show PUnit         = "()"
-  show (Thunk x    ) = "Thunk"
-  show (Var   l    ) = "Var " ++ show l
-  show (Inst t d   ) = show t ++ " " ++ showData d
+  show (Thunk x )    = "Thunk"
+  show (Var   l )    = "Var " ++ show l
+  show (Inst t d)    = show t ++ " " ++ showData d
+   where
+    showData d =
+      let
+        s =
+          intercalate ","
+            $ map (\(Ident k, v) -> show k ++ ": " ++ show v)
+            $ Map.toList d
+      in  "{" ++ s ++ "}"
   show (Ref l      ) = "Ref " ++ show l
   show (Fun p b env) = "Fun " ++ show p ++ " " ++ show env
 
 instance Show TCtor where
   showsPrec p (ValueCtor i c _) = showsPrt i . ("." ++) . showsPrt c
   showsPrec p (RefCtor i _    ) = showsPrt i
-
-showData :: OEnv -> String
-showData d =
-  let
-    s =
-      intercalate ","
-        $ map (\(Ident k, v) -> show k ++ ": " ++ show v)
-        $ Map.toList d
-  in  "{" ++ s ++ "}"
 
 localObjs :: (OEnv -> OEnv) -> Interpreter a -> Interpreter a
 localObjs f = local (\env -> env { objs = f $ objs env })
@@ -104,6 +103,9 @@ getsObjs f = gets (f . objStore)
 
 modifyObjs :: (ObjStore -> ObjStore) -> Interpreter ()
 modifyObjs f = modify (\st -> st { objStore = f $ objStore st })
+
+getType :: UIdent -> Interpreter TCtor
+getType i = asksTypes (Map.! i)
 
 lookupObj :: Ident -> Interpreter (Maybe Object)
 lookupObj i = do
@@ -145,18 +147,6 @@ inCurrentScope3
 inCurrentScope3 a = do
   env <- ask
   return ((local (const env) .) . a)
-
-objType :: Object -> String
-objType (PInt  _)  = "Integer"
-objType (PBool _)  = "Bool"
-objType (PStr  _)  = "String"
-objType (PChar _)  = "Char"
-objType PUnit      = "Unit"
-objType Fun{}      = "Function"
-objType (Inst t _) = show t
-objType (Var _   ) = "Variable"
-objType (Ref _   ) = "Reference"
-objType _          = "undefined"
 
 evalObj :: Object -> Interpreter (Maybe Object)
 evalObj o = case o of

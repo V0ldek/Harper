@@ -71,17 +71,13 @@ thunkPrep e@(TupExpr a tup) eval = do
 -- Object access.
 
 thunkPrep e@(ObjExpr a i) eval = do
-    lookup <- lookupObj i
-    case lookup of
-        Just (Var (Just ptr)) -> do
+    o <- getObj i
+    case o of
+        (Var (Just ptr)) -> do
             ptr' <- copy ptr
             i'   <- newvar
             return $ localObjs (Map.insert i' ptr') (eval $ ObjExpr a i')
-        Just _ -> return $ eval e
-        Nothing ->
-            error
-                $  "Unassigned identifier. Type check should've caught this."
-                ++ show e
+        _ -> return $ eval e
 
 -- Function application.
 

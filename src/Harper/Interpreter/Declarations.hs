@@ -2,7 +2,6 @@ module Harper.Interpreter.Declarations
     ( typeDecls
     , funDecls
     , declLocal
-    , declLocal'
     , declLocalUnass
     )
 where
@@ -22,25 +21,25 @@ import           Harper.TypeSystem.Core         ( ctorIdent
                                                 , thisIdent
                                                 )
 
-typeDecls :: Exec -> ContExec -> [TypeDecl Meta] -> Interpreter TEnv
-typeDecls exec contExec ds = do
-    tenvs <- mapM (declCtors exec contExec) ds
+typeDecls :: Call -> Exec -> [TypeDecl Meta] -> Interpreter TEnv
+typeDecls call exec ds = do
+    tenvs <- mapM (declCtors call exec) ds
     return $ foldl' Map.union Map.empty tenvs
 
-declCtors :: Exec -> ContExec -> TypeDecl Meta -> Interpreter TEnv
-declCtors exec contExec (ValTDecl a sig@(TSig _ tName _) body) =
-    declCtors exec contExec (ValTUDecl a sig [TVarDecl a tName body])
-declCtors exec contExec (ValTUDecl _ (TSig _ tName _) vs) = do
-    cs <- mapM (declVCtor exec contExec tName) vs
+declCtors :: Call -> Exec -> TypeDecl Meta -> Interpreter TEnv
+declCtors call exec (ValTDecl a sig@(TSig _ tName _) body) =
+    declCtors call exec (ValTUDecl a sig [TVarDecl a tName body])
+declCtors call exec (ValTUDecl _ (TSig _ tName _) vs) = do
+    cs <- mapM (declVCtor call exec tName) vs
     let iscs = zip (map (\(ValueCtor _ i _) -> i) cs) cs
     return $ Map.fromList iscs
-declCtors exec contExec (RefTDecl _ (TSig _ tName _) body) = do
-    c <- declRCtor exec contExec tName body
+declCtors call exec (RefTDecl _ (TSig _ tName _) body) = do
+    c <- declRCtor call exec tName body
     return $ Map.fromList [(tName, c)]
 
 declVCtor
-    :: Exec -> ContExec -> UIdent -> TypeVariantDecl Meta -> Interpreter TCtor
-declVCtor exec contExec tName (TVarDecl _ i body) = do
+    :: Call -> Exec -> UIdent -> TypeVariantDecl Meta -> Interpreter TCtor
+declVCtor call exec tName (TVarDecl _ i body) = do
     let membs = case body of
             (TBody _ membs      ) -> membs
             (DataTBody _ _ membs) -> membs
@@ -50,7 +49,7 @@ declVCtor exec contExec tName (TVarDecl _ i body) = do
         (DataTBody _ flds _) -> generateAutoMembs flds
     ls <- allocs (map snd autoMembs)
     let autoEnv = Map.fromList (zip (map fst autoMembs) ls)
-    declEnv <- funDecls decls exec contExec
+    declEnv <- funDecls decls call exec
     return $ ValueCtor tName i (Map.union declEnv autoEnv)
   where
     generateAutoMembs flds = do
@@ -86,13 +85,13 @@ declVCtor exec contExec tName (TVarDecl _ i body) = do
                     ++ " "
                     ++ show mo'
 
-declRCtor :: Exec -> ContExec -> UIdent -> TypeBody Meta -> Interpreter TCtor
-declRCtor exec contExec tName body = do
+declRCtor :: Call -> Exec -> UIdent -> TypeBody Meta -> Interpreter TCtor
+declRCtor call exec tName body = do
     let (membs, flds) = case body of
             (TBody _ membs         ) -> (membs, [])
             (DataTBody _ flds membs) -> (membs, flds)
         decls = [ decl | TMemFDecl _ decl <- membs ]
-    declEnv <- funDecls decls exec contExec
+    declEnv <- funDecls decls call exec
     let ctorPtr = declEnv Map.! ctorIdent
         t       = RefCtor tName declEnv
     () <- setupCtor ctorPtr flds t
@@ -116,8 +115,8 @@ declRCtor exec contExec tName body = do
             thisPtr <- alloc (Ref instPtr)
             localObjs (Map.insert thisIdent thisPtr) body
 
-funDecls :: [FunDecl Meta] -> Exec -> ContExec -> Interpreter OEnv
-funDecls ds exec contExec = do
+funDecls :: [FunDecl Meta] -> Call -> Exec -> Interpreter OEnv
+funDecls ds call exec = do
     env <- asks objs
     let n = length ds
     ls <- newlocs n
@@ -132,22 +131,17 @@ funDecls ds exec contExec = do
   where
     declToFun env (FDecl _ _ params (FExprBody a body)) =
         case paramIs params of
-            ps -> Fun ps (exec $ RetExprStmt a body) env
+            ps -> Fun ps (call $ RetExprStmt a body) env
     declToFun env (FDecl _ _ params (FStmtBody _ body)) =
-        Fun (paramIs params) (exec body) env
+        Fun (paramIs params) (call body) env
     declToFun env (FDecl _ _ params (FVIterBody _ body)) =
-        Fun (paramIs params) (iteratorBody body contExec) env
+        Fun (paramIs params) (iteratorBody body exec) env
     declToFun env (FDecl _ _ params (FRIterBody _ body)) =
-        Fun (paramIs params) (refIteratorBody body contExec) env
+        Fun (paramIs params) (refIteratorBody body exec) env
     paramIs ps = [ i | FParam _ i <- ps ]
 
-declLocal :: LocalObjDecl Meta -> Expression Meta -> Eval -> Interpreter OEnv
-declLocal decl e eval = do
-    (l, _) <- makeThunk e eval
-    declLocal' decl l
-
-declLocal' :: LocalObjDecl Meta -> Ptr -> Interpreter OEnv
-declLocal' decl l = do
+declLocal :: LocalObjDecl Meta -> Ptr -> Interpreter OEnv
+declLocal decl l = do
     env <- asks objs
     case decl of
         LocVarDecl _ d -> do

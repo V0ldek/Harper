@@ -48,7 +48,7 @@ declTypes ds = do
     loadTypes (toStore ts)
     let ctorStore = Map.fromList [ (ctor c, c) | c <- concat ctors ]
     modify (\st -> st { tCtors = ctorStore })
-    forM_ ts implementInterfaces
+    forM_ ts implementIfaces
     -- Member type signatures now have references to "empty" types without any members or interfaces.
     -- Not the cleanest solution, but it works.
     forM_ ts fixMemberSignatures
@@ -258,7 +258,7 @@ instance Declarable TypeHint where
     declI (THint _ i _) = i
 
 instance Declarable Declaration where
-    declare d@(Decl      _ i ) = raise $ Error.locWOutType i d
+    declare d@(Decl      _ i ) = raise $ Error.localWOutType i d
     declare d@(DeclWHint a th) = do
         (th', env) <- declare th
         return (DeclWHint (annWith (typ th') a) th', env)

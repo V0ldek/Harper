@@ -1,5 +1,5 @@
 module Harper.TypeSystem.Interfaces
-    ( implementInterfaces
+    ( implementIfaces
     )
 where
 import           Control.Monad.State
@@ -10,17 +10,17 @@ import           Harper.Abs
 import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.GlobalTypes
 
-implementInterfaces :: Type -> TypeChecker ()
-implementInterfaces t@VType { vName = i, vMembs = membs, vUnivMembs = univ } =
+implementIfaces :: Type -> TypeChecker ()
+implementIfaces t@VType { vName = i, vMembs = membs, vUnivMembs = univ } =
     do
         ifaces <- getIfaces (Map.restrictKeys membs univ)
         let t' = t { vIfaces = Map.fromList (map (\i -> (iName i, i)) ifaces) }
         modify (\st -> st { types = Map.insert i t' $ types st })
-implementInterfaces t@RType { rName = i, rMembs = membs } = do
+implementIfaces t@RType { rName = i, rMembs = membs } = do
     ifaces <- getIfaces membs
     let t' = t { rIfaces = Map.fromList (map (\i -> (iName i, i)) ifaces) }
     modify (\st -> st { types = Map.insert i t' $ types st })
-implementInterfaces t = return ()
+implementIfaces t = return ()
 
 getIfaces :: OEnv -> TypeChecker [IfaceImpl]
 getIfaces membs = do

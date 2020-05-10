@@ -42,8 +42,8 @@ red = RGB 255 0 0
 showsPrt :: Print a => a -> ShowS
 showsPrt x = (render (prt 0 x) ++)
 
-outputMsg :: String -> HarperOutput ()
-outputMsg s = output (s ++)
+outputMsg :: ShowS -> HarperOutput ()
+outputMsg = output
 
 outputLog :: ShowS -> HarperOutput ()
 outputLog s = output msg

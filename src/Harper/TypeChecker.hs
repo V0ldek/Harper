@@ -12,6 +12,7 @@ import           Data.Maybe
 import           Harper.Abs
 import           Harper.Abs.Pos
 import           Harper.Abs.Tuple
+import           Harper.Abs.Typed
 import qualified Harper.Error                  as Error
 import           Harper.Output
 import           Harper.Printer                 ( Print(..) )
@@ -23,7 +24,6 @@ import           Harper.TypeSystem.GlobalTypes
 import           Harper.TypeSystem.StaticAnalysis
 import           Harper.TypeSystem.Traits
 import           Harper.TypeSystem.Typing
-import           Harper.Abs.Typed
 import           Harper.Utility
 
 runTypeChecker :: Program Pos -> HarperOutput (Program (TypeMetaData Pos))
@@ -158,14 +158,7 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
     case tInst of
         Just (t@(TypeCtor tName _ flds), t') -> do
             let assMap = Map.fromList [ (i, d) | d@(DataAss _ i _) <- fldAss ]
-                fldIs  = Map.keysSet flds
-                assIs  = Map.keysSet assMap
-                notAss = fldIs Set.\\ assIs
-                excess = assIs Set.\\ fldIs
-            unless (Set.null notAss)
-                   (raise $ Error.unassFlds t (Set.toList notAss) e)
-            unless (Set.null excess)
-                   (raise $ Error.excessFlds t (Set.toList excess) e)
+            ()     <- assertFullFieldAssignment t flds assMap
             fldRes <- mapM annotateFld fldAss
             let (fldAss', substs) = unzip fldRes
                 ts                = map (`apply` t') substs
@@ -186,6 +179,16 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
                     Just subst -> return (DataAss (annWith t a) i e'', subst)
                     Nothing    -> raise $ Error.invType t' t e' e
         Nothing -> raise $ Error.undeclaredCtor ctor e
+  where
+    assertFullFieldAssignment t flds assMap = do
+        let fldIs  = Map.keysSet flds
+            assIs  = Map.keysSet assMap
+            notAss = fldIs Set.\\ assIs
+            excess = assIs Set.\\ fldIs
+        unless (Set.null notAss)
+               (raise $ Error.unassFlds t (Set.toList notAss) e)
+        unless (Set.null excess)
+               (raise $ Error.excessFlds t (Set.toList excess) e)
 
 -- Tuples.
 
@@ -732,8 +735,6 @@ analStmt (YieldStmt a e) = do
     return $ YieldStmt (annWith t a) e'
 analStmt (YieldRetStmt a) = do
     -- Yield return may happen in an iterator of any type, so we add any type as the yield.
-    -- In theory, all those yield returns should be of the same type, but the iterator's type gets unified
-    -- further upstream, so all different type variables will get substituted with the same type.
     var <- newvar
     addYield (TypeVar var)
     return $ YieldRetStmt (annWith unitT a)
@@ -954,9 +955,3 @@ analElse :: ElseStatement Pos -> TypeChecker (ElseStatement (TypeMetaData Pos))
 analElse c@(ElseStmt a s) = do
     s' <- analStmt s
     return $ ElseStmt (annWith unitT a) s'
-
-paramIsImpure :: Type -> Bool
-paramIsImpure RType{}                   = True
-paramIsImpure (FType ImpType r        ) = True
-paramIsImpure (FType p       r@FType{}) = paramIsImpure r
-paramIsImpure _                         = False

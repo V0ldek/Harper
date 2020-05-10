@@ -1,4 +1,4 @@
-Error: expression `"Str"` has invalid type `String`; expected `Integer`.
+Error: expression `"Str"` has invalid type `String`; cannot match with `Integer`.
 During evaluation of:
  t . foo "Str"
 

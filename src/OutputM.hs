@@ -1,6 +1,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
+-- Output Monad
+-- Enhances the Err monad with an output component.
+-- The overall result wrapped in the Err monad is computed lazily, which is the main motivation behind this monad.
+-- This allows the interpreter front-end to consume the output stream of a Harper program while it is running.
+-- If the output was simply wrapped in a WriterT, 
+-- the entire result would have to be computed before anything was written to the screen.
+-- Output stops accumulating when the result becomes Bad.
+--
+-- This could probably be a full-blown monad transformer, not only an enhancement to the specific Err monad,
+-- but this does the work and was quick to implement.
 module OutputM where
 import           Control.Monad                  ( MonadPlus(..)
                                                 , liftM

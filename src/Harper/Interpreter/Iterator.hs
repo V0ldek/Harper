@@ -20,7 +20,7 @@ import           Harper.Output
 import           Harper.TypeSystem.Core         ( thisIdent )
 import           Harper.TypeSystem.GlobalTypes
 
-iteratorBody :: Statement Meta -> ContExec -> Interpreter Object
+iteratorBody :: Statement Meta -> Exec -> Interpreter Object
 iteratorBody s exec = do
     ctor <- iteratorCtor (ValueCtor (UIdent "Iterator") (UIdent "Iterator"))
                          valueCurrentImpl
@@ -34,7 +34,7 @@ iteratorBody s exec = do
                 ctor
                 (Map.fromList [(iterContI, contL), (iterFunThisI, funThisL)])
         Nothing -> return $ Inst ctor (Map.fromList [(iterContI, contL)])
-refIteratorBody :: Statement Meta -> ContExec -> Interpreter Object
+refIteratorBody :: Statement Meta -> Exec -> Interpreter Object
 refIteratorBody s exec = do
     ctor <- iteratorCtor (RefCtor (UIdent "RefIterator"))
                          refCurrentImpl
@@ -110,7 +110,7 @@ refNextImpl = do
 iterateImpl :: Interpreter Object
 iterateImpl = getThis
 
-iteratorCont :: Statement Meta -> ContExec -> Interpreter Object
+iteratorCont :: Statement Meta -> Exec -> Interpreter Object
 iteratorCont = startIterator kElem
   where
     kElem :: Object -> Interpreter Object
@@ -129,7 +129,7 @@ iteratorCont = startIterator kElem
                 }
         return $ Tup [PBool True, newIter]
 
-refIteratorCont :: Statement Meta -> ContExec -> Interpreter Object
+refIteratorCont :: Statement Meta -> Exec -> Interpreter Object
 refIteratorCont = startIterator kElem
   where
     kElem :: Object -> Interpreter Object
@@ -147,7 +147,7 @@ refIteratorCont = startIterator kElem
 startIterator
     :: (Object -> Interpreter Object)
     -> Statement Meta
-    -> ContExec
+    -> Exec
     -> Interpreter Object
 startIterator kElem s exec = do
     kRet <- inCurrentScope2 kElem
