@@ -15,3 +15,7 @@ For additional details see the Spec document `lang/Spec.md`.
 Examples of Harper programs can be found in the `lang/Examples` folder.
 
 Formal grammar is located in `lang/Harper.cf`.
+
+## Build and run
+
+The interpreter is written in Haskell and uses stack for the build pipeline. Use `stack run harper` to build and run or `stack install` to install the `harper` executable. Tests can be run with `stack test`.
