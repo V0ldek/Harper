@@ -201,6 +201,14 @@ eval e'@(NotExpr _ e) = do
     case o of
         PBool b -> return $ PBool $ not b
 
+-- Function composition.
+
+eval e@(CompExpr a e1 e2) = do
+    env <- asks objs
+    var <- newvar
+    let body = AppExpr a e1 (AppExpr a e2 (ObjExpr a var))
+    return $ Fun [var] (eval body) env
+
 -- Member access.
 
 eval e@(MembExpr _ e' acc) = do
@@ -403,6 +411,8 @@ exec (DivStmt a i e) kRet k =
     exec (AssStmt a i (DivExpr a (ObjExpr a i) e)) kRet k
 exec (PowStmt a i e) kRet k =
     exec (AssStmt a i (PowExpr a (ObjExpr a i) e)) kRet k
+exec (CompStmt a i e) kRet k =
+    exec (AssStmt a i (CompExpr a (ObjExpr a i) e)) kRet k
 
 exec s@(DataAssStmt _ i e) kRet k = do
     inst <- getThis
@@ -430,6 +440,8 @@ exec (DataDivStmt a i e) kRet k =
     exec (DataAssStmt a i (DivExpr a (DataExpr a [MembAcc a i]) e)) kRet k
 exec (DataPowStmt a i e) kRet k =
     exec (DataAssStmt a i (PowExpr a (DataExpr a [MembAcc a i]) e)) kRet k
+exec (DataCompStmt a i e) kRet k =
+    exec (DataAssStmt a i (CompExpr a (DataExpr a [MembAcc a i]) e)) kRet k
 
 exec (EvalStmt _ e) kRet k = do
     _ <- eval e

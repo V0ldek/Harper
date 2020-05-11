@@ -332,6 +332,28 @@ annotateExpr e@(NotExpr a e') = do
     (a', e'') <- annotateUnExpr boolT e a e'
     return $ NotExpr a' e''
 
+-- Function composition.
+
+annotateExpr e@(CompExpr a e1 e2) = do
+    e1' <- annotateExpr e1
+    e2' <- annotateExpr e2
+    let (t1, t2) = (typ e1', typ e2')
+    case t2 of
+        FType p2 r2 -> do
+            let exp   = FType r2 (TypeVar (Ident "a"))
+                subst = unify exp t1
+            case subst of
+                Just s -> do
+                    let t1'        = apply s t1
+                        FType _ r' = t1'
+                    return $ CompExpr (annWith (FType p2 r') a) e1' e2'
+                _ -> raise $ Error.invType t1 exp e1 e
+        _ -> raise $ Error.invType
+            t2
+            (FType (TypeVar (Ident "a")) (TypeVar (Ident "b")))
+            e2
+            e
+
 -- Member access.
 
 annotateExpr e@(MembExpr a e' acc) = do
@@ -841,6 +863,9 @@ analStmt s@(DivStmt a i e) = do
 analStmt s@(PowStmt a i e) = do
     e' <- analAss i e s
     return $ PowStmt (annWith unitT a) i e'
+analStmt s@(CompStmt a i e) = do
+    e' <- analAss i e s
+    return $ CompStmt (annWith unitT a) i e'
 analStmt s@(DataAssStmt a i e) = do
     e' <- analDataAss i e s
     return $ DataAssStmt (annWith unitT a) i e'
@@ -859,6 +884,9 @@ analStmt s@(DataDivStmt a i e) = do
 analStmt s@(DataPowStmt a i e) = do
     e' <- analDataAss i e s
     return $ DataPowStmt (annWith unitT a) i e'
+analStmt s@(DataCompStmt a i e) = do
+    e' <- analDataAss i e s
+    return $ DataCompStmt (annWith unitT a) i e'
 
 analStmt (EvalStmt a e) = do
     e' <- annotateExpr e
