@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b31051414ce4248a988cafae809e14eee98d8fe7dae51c4aa1d6745cd358ef26
+-- hash: b44ae52bd466cbc95103f51b85cd7b8efc509b83f43b13b4b3f65a7db6c17114
 
 name:           Harper
 version:        0.1.0.0
@@ -73,7 +73,7 @@ library
     , mtl >=2.2 && <2.3
   default-language: Haskell2010
 
-executable Harper-exe
+executable harper
   main-is: Main.hs
   other-modules:
       Paths_Harper

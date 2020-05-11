@@ -175,7 +175,7 @@ annotateExpr e@(VCtorExpr a ctor fldAss) = do
                 e'' <- annotateExpr e'
                 let t  = objType $ flds Map.! i
                     t' = typ e''
-                case unify t' t of
+                case unify t t' of
                     Just subst -> return (DataAss (annWith t a) i e'', subst)
                     Nothing    -> raise $ Error.invType t' t e' e
         Nothing -> raise $ Error.undeclaredCtor ctor e
