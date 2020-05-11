@@ -121,6 +121,10 @@ thunkPrep (OrExpr  a e1 e2) eval = thunkPrepBin e1 e2 (OrExpr a) eval
 
 thunkPrep (NotExpr a e    ) eval = thunkPrepUn e (NotExpr a) eval
 
+-- Function composition.
+
+thunkPrep (CompExpr a e1 e2) eval = thunkPrepBin e1 e2 (CompExpr a) eval
+
 -- Member access.
 
 thunkPrep (MembExpr a e acc) eval =
