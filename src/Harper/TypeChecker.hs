@@ -671,12 +671,14 @@ annotateBody body initSt = case body of
                     (True , _    ) -> refIteratorT iterElemT SEType
                     (False, True ) -> refIteratorT iterElemT ImpType
                     (False, False) -> iteratorT iterElemT
-                let syntaxCtor = if hasSideeffects bodySt || isImpure bodySt
+                let isRef = hasSideeffects bodySt || isImpure bodySt
+                    syntaxCtor = if isRef
                         then FRIterBody
                         else FVIterBody
                 -- When returning an iterator, the impurities are contained within the iterator functions.
+                -- A RefIterator-returning function must be impure, as it creates a new instance of a ref type.
                 modifyBlkSt
-                    (\st -> st { hasSideeffects = False, isImpure = False })
+                    (\st -> st { hasSideeffects = False, isImpure = isRef })
                 return $ syntaxCtor (annWith t (pos body)) s'
             _ -> raise $ Error.mixingYieldAndReturn s
 

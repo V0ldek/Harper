@@ -12,5 +12,11 @@ Before next 3.
 After second.
 false
 42
+Before next 4.
+false
+42
+Before next 5.
+false
+42
 
 Execution ended with value: ()

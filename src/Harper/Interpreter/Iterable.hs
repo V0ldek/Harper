@@ -55,12 +55,13 @@ forInRefIterable f@(ForInRStmt a pat e s) = do
     iterVar <- newvar
     let iter          = ObjExpr a iterVar
         iterateAccess = MembExpr a e [MembAcc a iterateI]
+        iterateCall   = AppExpr a iterateAccess litUnit
         nextAccess    = MembExpr a iter [MembAcc a iterNextI]
         currentAccess = MembExpr a iter [MembAcc a iterCurrentI]
         unit          = LitExpr a (UnitLit a)
         pred          = AppExpr a nextAccess unit
         iterInit =
-            DconStmt a (PatDecl a (LocValDecl a (Decl a iterVar))) iterateAccess
+            DconStmt a (PatDecl a (LocValDecl a (Decl a iterVar))) iterateCall
         initStmt  = DconStmt a pat (AppExpr a currentAccess unit)
         whileBody = StmtBlock a [initStmt, s]
         whileStmt = WhileStmt a pred whileBody
