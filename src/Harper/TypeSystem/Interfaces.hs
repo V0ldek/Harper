@@ -11,11 +11,10 @@ import           Harper.TypeSystem.Core
 import           Harper.TypeSystem.GlobalTypes
 
 implementIfaces :: Type -> TypeChecker ()
-implementIfaces t@VType { vName = i, vMembs = membs, vUnivMembs = univ } =
-    do
-        ifaces <- getIfaces (Map.restrictKeys membs univ)
-        let t' = t { vIfaces = Map.fromList (map (\i -> (iName i, i)) ifaces) }
-        modify (\st -> st { types = Map.insert i t' $ types st })
+implementIfaces t@VType { vName = i, vMembs = membs, vUnivMembs = univ } = do
+    ifaces <- getIfaces (Map.restrictKeys membs univ)
+    let t' = t { vIfaces = Map.fromList (map (\i -> (iName i, i)) ifaces) }
+    modify (\st -> st { types = Map.insert i t' $ types st })
 implementIfaces t@RType { rName = i, rMembs = membs } = do
     ifaces <- getIfaces membs
     let t' = t { rIfaces = Map.fromList (map (\i -> (iName i, i)) ifaces) }
@@ -40,7 +39,8 @@ getIfaces membs = do
         Just ptr -> do
             memb <- getByPtr ptr
             case memb of
-                Obj (FType _ RType { rName = i, rArgs = args }) _
-                    | i == refIteratorI -> return [Iface refIterableI args]
+                Obj (FType _ (FType ImpType RType { rName = i, rArgs = args })) _
+                    | i == refIteratorI
+                    -> return [Iface refIterableI args]
                 _ -> return []
         Nothing -> return []

@@ -133,7 +133,12 @@ refIteratorCont :: Statement Meta -> Exec -> Interpreter Object
 refIteratorCont = startIterator kElem
   where
     kElem :: Object -> Interpreter Object
-    kElem PUnit        = return $ PBool False
+    kElem PUnit        = do
+        this <- getThis
+        let contFldPtr = _data this Map.! iterContI
+        lk <- alloc (Thunk $ return $ PBool False)
+        modifyObjs (Map.insert contFldPtr (Var $ Just lk))
+        return $ PBool False
     kElem (Tup [o, k]) = do
         this <- getThis
         lo   <- alloc o
