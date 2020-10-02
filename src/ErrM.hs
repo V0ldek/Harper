@@ -7,12 +7,12 @@ module ErrM where
 -- the Error monad: like Maybe type with error msgs
 
 import           Control.Monad                  ( MonadPlus(..)
-                                                , MonadFail(..)
                                                 , liftM
                                                 )
 import           Control.Applicative            ( Applicative(..)
                                                 , Alternative(..)
                                                 )
+import           Control.Monad.Fail
 
 data Err a = Ok a | Bad String
   deriving (Read, Show, Eq, Ord)
