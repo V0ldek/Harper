@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b44ae52bd466cbc95103f51b85cd7b8efc509b83f43b13b4b3f65a7db6c17114
+-- hash: 17c39ebf504990f1f9363e6fb9e17c9afb8db7eb87162680f6eb2429016df448
 
 name:           Harper
 version:        0.1.0.0
@@ -65,12 +65,12 @@ library
   hs-source-dirs:
       src
   build-depends:
-      array >=0.5 && <0.6
-    , base >=4.7 && <5
-    , containers >=0.6 && <0.7
-    , directory >=1.3 && <1.4
-    , filepath >=1.4 && <1.5
-    , mtl >=2.2 && <2.3
+      array
+    , base
+    , containers
+    , directory
+    , filepath
+    , mtl
   default-language: Haskell2010
 
 executable harper
@@ -82,12 +82,12 @@ executable harper
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Harper
-    , array >=0.5 && <0.6
-    , base >=4.7 && <5
-    , containers >=0.6 && <0.7
-    , directory >=1.3 && <1.4
-    , filepath >=1.4 && <1.5
-    , mtl >=2.2 && <2.3
+    , array
+    , base
+    , containers
+    , directory
+    , filepath
+    , mtl
   default-language: Haskell2010
 
 test-suite Harper-test
@@ -101,12 +101,12 @@ test-suite Harper-test
   build-depends:
       HUnit
     , Harper
-    , array >=0.5 && <0.6
-    , base >=4.7 && <5
-    , containers >=0.6 && <0.7
-    , directory >=1.3 && <1.4
-    , filepath >=1.4 && <1.5
-    , mtl >=2.2 && <2.3
+    , array
+    , base
+    , containers
+    , directory
+    , filepath
+    , mtl
     , test-framework
     , test-framework-hunit
   default-language: Haskell2010
@@ -122,12 +122,12 @@ test-suite OutputM-test
   build-depends:
       HUnit
     , Harper
-    , array >=0.5 && <0.6
-    , base >=4.7 && <5
-    , containers >=0.6 && <0.7
-    , directory >=1.3 && <1.4
-    , filepath >=1.4 && <1.5
-    , mtl >=2.2 && <2.3
+    , array
+    , base
+    , containers
+    , directory
+    , filepath
+    , mtl
     , test-framework
     , test-framework-hunit
   default-language: Haskell2010

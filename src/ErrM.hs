@@ -12,13 +12,16 @@ import           Control.Monad                  ( MonadPlus(..)
 import           Control.Applicative            ( Applicative(..)
                                                 , Alternative(..)
                                                 )
+import           Control.Monad.Fail
 
 data Err a = Ok a | Bad String
   deriving (Read, Show, Eq, Ord)
 
+instance MonadFail Err where
+  fail = Bad
+
 instance Monad Err where
   return = Ok
-  fail   = Bad
   Ok  a >>= f = f a
   Bad s >>= _ = Bad s
 
