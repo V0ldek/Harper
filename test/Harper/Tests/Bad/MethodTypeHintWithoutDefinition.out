@@ -1,0 +1,7 @@
+Error: type hint for function `sayHello` has no associated definition. 
+During evaluation of: 
+    sayHello :: String 
+    
+    Located at line 2 column 5 
+    
+Execution terminated with an error: type error.
