@@ -7,6 +7,7 @@ module ErrM where
 -- the Error monad: like Maybe type with error msgs
 
 import           Control.Monad                  ( MonadPlus(..)
+                                                , MonadFail(..)
                                                 , liftM
                                                 )
 import           Control.Applicative            ( Applicative(..)

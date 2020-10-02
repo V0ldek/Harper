@@ -13,6 +13,7 @@
 -- but this does the work and was quick to implement.
 module OutputM where
 import           Control.Monad                  ( MonadPlus(..)
+                                                , MonadFail(..)
                                                 , liftM
                                                 )
 import           Control.Applicative            ( Applicative(..)
