@@ -1,0 +1,7 @@
+Error: type hint for function `main` has no associated definition. 
+During evaluation of: 
+    main :: Integer 
+    
+    Located at line 1 column 1 
+    
+Execution terminated with an error: type error.

@@ -43,9 +43,19 @@ typeCheck p@(Prog a ds) = do
     let env = Env $ Map.union userEnv globalEnv
     fs'   <- mapM (local (const env) . (\f -> clearBlkSt >> annotate f)) fs
     tds'  <- mapM (local (const env) . annotateTypeMembers) tds
-    ctors <- gets tCtors
+    matchDeclarations fts fs
     return (toProg tds' fts' fs')
   where
+    matchDeclarations :: (Position a) => [TypeHint a] -> [FunDecl b] -> TypeChecker ()
+    matchDeclarations hs ds = mapM_ (findMatchingIn dsIdent) hs
+        where
+            dsIdent = Set.fromList $ map getDIdent ds
+            getDIdent (FDecl _ id _ _) = id
+    findMatchingIn :: (Position a) => Set.Set Ident -> TypeHint a -> TypeChecker ()
+    findMatchingIn decls hint = unless (hintId `Set.member` decls) (raise $ Error.missingDeclaration hintId hint) 
+        where
+            hintId = getHIdent hint
+            getHIdent (THint _ id _) = id
     toProg tds fts fs =
         let tds' = [ TopLvlTDecl (annWith unitT $ pos td) td | td <- tds ]
             fts' = [ TopLvlTHint (annWith (typ th) a) th | th <- fts ]
@@ -67,9 +77,15 @@ typeCheck p@(Prog a ds) = do
         return $ RefTDecl (annWith unitT a') (annWith unitT <$> sig) body'
     annotateTypeBody tName (TBody a membs) = do
         membs' <- mapM (annotateMemb tName) membs
+        let hints = [ hint | TMemTHint _ hint <- membs ]
+            decls = [ decl | TMemFDecl _ decl <- membs ]
+        matchDeclarations hints decls 
         return $ TBody (annWith unitT a) membs'
     annotateTypeBody tName (DataTBody a flds membs) = do
         membs' <- mapM (annotateMemb tName) membs
+        let hints = [ hint | TMemTHint _ hint <- membs ]
+            decls = [ decl | TMemFDecl _ decl <- membs ]
+        matchDeclarations hints decls
         return $ DataTBody (annWith unitT a)
                            (map (annWith unitT <$>) flds)
                            membs'

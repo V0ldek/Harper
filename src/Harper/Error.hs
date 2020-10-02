@@ -97,6 +97,7 @@ invTypes
     -> HarperOutput a
 iterCurrNoElem :: HarperOutput a
 localWOutType :: (Print p, Position p) => Ident -> p -> HarperOutput a
+missingDeclaration :: (Print p, Position p) => Ident -> p -> HarperOutput a
 mixingYieldAndReturn :: (Print p, Position p) => p -> HarperOutput a
 noRet :: (Position p) => Statement p -> HarperOutput a
 nonExhPatMatch :: (Print p, Position p) => p -> HarperOutput a
@@ -442,6 +443,10 @@ localWOutType i ctx = do
           )
         )
         ctx
+    typeErr
+
+missingDeclaration i ctx = do
+    outputErr (("type hint for function `" ++) . showsPrt i . ("` has no associated definition." ++)) ctx
     typeErr
 
 mixingYieldAndReturn ctx = do
