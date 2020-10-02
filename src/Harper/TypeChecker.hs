@@ -36,6 +36,7 @@ typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
+    -- TODO check membs for correlation between THint and FDecl
     loadGlobalTypes
     declTypes tds
     globalEnv       <- declareGlobals
@@ -43,9 +44,19 @@ typeCheck p@(Prog a ds) = do
     let env = Env $ Map.union userEnv globalEnv
     fs'   <- mapM (local (const env) . (\f -> clearBlkSt >> annotate f)) fs
     tds'  <- mapM (local (const env) . annotateTypeMembers) tds
-    ctors <- gets tCtors
+    matchDeclarations fts fs
     return (toProg tds' fts' fs')
   where
+    matchDeclarations :: (Position a) => [TypeHint a] -> [FunDecl b] -> TypeChecker ()
+    matchDeclarations hs ds = mapM_ (findMatchingIn dsIdent) hs
+        where
+            dsIdent = Set.fromList $ map getDIdent ds
+            getDIdent (FDecl _ id _ _) = id
+    findMatchingIn :: (Position a) => Set.Set Ident -> TypeHint a -> TypeChecker ()
+    findMatchingIn decls hint = unless (hintId `Set.member` decls) (raise $ Error.missingDeclaration hintId hint) 
+        where
+            hintId = getHIdent hint
+            getHIdent (THint _ id _) = id
     toProg tds fts fs =
         let tds' = [ TopLvlTDecl (annWith unitT $ pos td) td | td <- tds ]
             fts' = [ TopLvlTHint (annWith (typ th) a) th | th <- fts ]
@@ -65,6 +76,7 @@ typeCheck p@(Prog a ds) = do
     annotateTypeMembers (RefTDecl a' sig@(TSig _ tName _) body) = do
         body' <- annotateTypeBody tName body
         return $ RefTDecl (annWith unitT a') (annWith unitT <$> sig) body'
+    -- TODO check membs for correlation between THint and FDecl
     annotateTypeBody tName (TBody a membs) = do
         membs' <- mapM (annotateMemb tName) membs
         return $ TBody (annWith unitT a) membs'
