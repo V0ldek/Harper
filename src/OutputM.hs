@@ -32,9 +32,11 @@ class (Monoid o, Monad m) => MonadOutput o m | m -> o where
 instance Monoid o => MonadOutput o (Output o) where
   output o = Out o (return ())
 
+instance Monoid o => MonadFail (Output o) where
+  fail   = Out mempty . fail
+
 instance Monoid o => Monad (Output o) where
   return = Out mempty . return
-  fail   = Out mempty . fail
   (Out o e) >>= f = do
     let (Out o' b) = case e of
           Ok  a -> f a
