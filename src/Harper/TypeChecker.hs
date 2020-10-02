@@ -75,7 +75,6 @@ typeCheck p@(Prog a ds) = do
     annotateTypeMembers (RefTDecl a' sig@(TSig _ tName _) body) = do
         body' <- annotateTypeBody tName body
         return $ RefTDecl (annWith unitT a') (annWith unitT <$> sig) body'
-    -- TODO check membs for correlation between THint and FDecl
     annotateTypeBody tName (TBody a membs) = do
         membs' <- mapM (annotateMemb tName) membs
         let hints = [ hint | TMemTHint _ hint <- membs ]
