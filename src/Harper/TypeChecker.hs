@@ -36,7 +36,6 @@ typeCheck p@(Prog a ds) = do
     let tds = [ td | TopLvlTDecl _ td <- ds ]
         fts = [ ft | TopLvlTHint _ ft <- ds ]
         fs  = [ f | TopLvlFDecl _ f <- ds ]
-    -- TODO check membs for correlation between THint and FDecl
     loadGlobalTypes
     declTypes tds
     globalEnv       <- declareGlobals
@@ -79,9 +78,15 @@ typeCheck p@(Prog a ds) = do
     -- TODO check membs for correlation between THint and FDecl
     annotateTypeBody tName (TBody a membs) = do
         membs' <- mapM (annotateMemb tName) membs
+        let hints = [ hint | TMemTHint _ hint <- membs ]
+            decls = [ decl | TMemFDecl _ decl <- membs ]
+        matchDeclarations hints decls 
         return $ TBody (annWith unitT a) membs'
     annotateTypeBody tName (DataTBody a flds membs) = do
         membs' <- mapM (annotateMemb tName) membs
+        let hints = [ hint | TMemTHint _ hint <- membs ]
+            decls = [ decl | TMemFDecl _ decl <- membs ]
+        matchDeclarations hints decls
         return $ DataTBody (annWith unitT a)
                            (map (annWith unitT <$>) flds)
                            membs'
